@@ -27,8 +27,9 @@ cargo build --locked --release --bin alacritty
 ./target/release/alacritty
 ```
 
-The binary uses the normal Alacritty configuration. To create an app bundle,
-install `scdoc` and follow the upstream [macOS installation instructions](INSTALL.md#macos).
+The binary includes [our built-in defaults](LOCAL-DEFAULTS.md), with normal
+Alacritty configuration files available for overrides. To create an app bundle
+with the included fonts, install `scdoc` and run `make app`.
 
 ## Validation
 

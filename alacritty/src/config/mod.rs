@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
+use std::sync::LazyLock;
 use std::{env, fs, io};
 
 use log::{debug, error, info, warn};
@@ -38,6 +39,21 @@ use crate::logging::LOG_TARGET_CONFIG;
 
 /// Maximum number of depth for the configuration file imports.
 pub const IMPORT_RECURSION_LIMIT: usize = 5;
+
+/// Fork defaults embedded in the executable, beneath imports and user configuration.
+static BUILTIN_CONFIG: LazyLock<Value> = LazyLock::new(|| {
+    let config =
+        toml::from_str(include_str!("defaults.toml")).expect("invalid embedded Alacritty defaults");
+
+    #[cfg(target_os = "macos")]
+    let config = serde_utils::merge(
+        config,
+        toml::from_str(include_str!("defaults-macos.toml"))
+            .expect("invalid embedded macOS defaults"),
+    );
+
+    config
+});
 
 /// Result from config loading.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -125,6 +141,10 @@ pub fn load(options: &mut Options) -> UiConfig {
         .or_else(|| installed_config("toml"))
         .or_else(|| installed_config("yml"));
 
+    load_config(config_path, options)
+}
+
+fn load_config(config_path: Option<PathBuf>, options: &mut Options) -> UiConfig {
     // Load the config using the following fallback behavior:
     //  - Config path + CLI overrides
     //  - CLI overrides
@@ -133,7 +153,8 @@ pub fn load(options: &mut Options) -> UiConfig {
         .as_ref()
         .and_then(|config_path| load_from(config_path).ok())
         .unwrap_or_else(|| {
-            let mut config = UiConfig::default();
+            let mut config = deserialize_ui_config(Value::Table(Table::new()))
+                .expect("invalid embedded Alacritty defaults");
             match config_path {
                 Some(config_path) => config.config_paths.push(config_path),
                 None => info!(target: LOG_TARGET_CONFIG, "No config file found; using default"),
@@ -185,10 +206,15 @@ fn read_config(path: &Path) -> Result<UiConfig> {
     let config_value = parse_config(path, &mut config_paths, IMPORT_RECURSION_LIMIT)?;
 
     // Deserialize to concrete type.
-    let mut config = UiConfig::deserialize(config_value)?;
+    let mut config = deserialize_ui_config(config_value)?;
     config.config_paths = config_paths;
 
     Ok(config)
+}
+
+/// Apply built-in defaults once, after imports have been resolved.
+fn deserialize_ui_config(config_value: Value) -> Result<UiConfig> {
+    Ok(UiConfig::deserialize(serde_utils::merge(BUILTIN_CONFIG.clone(), config_value))?)
 }
 
 /// Deserialize all configuration files as generic Value.
@@ -406,6 +432,88 @@ pub fn installed_config(suffix: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_user_config_uses_embedded_defaults() {
+        let config = load_config(None, &mut Options::default());
+        assert_eq!(config.window.padding(1.), (12., 24.));
+        assert!(config.window.dynamic_padding);
+        assert!(config.window.maximized());
+        assert_eq!(config.scrolling.history(), 100_000);
+        assert!(config.selection.save_to_clipboard);
+        assert!(config.mouse.hide_when_typing);
+        assert!(config.config_paths.is_empty());
+        assert!(config.pty_config().shell.is_none());
+
+        let value = toml::Value::try_from(&config).unwrap();
+        assert_eq!(value["colors"]["primary"]["background"].as_str(), Some("#1a1b26"));
+        assert_eq!(value["font"]["size"].as_float(), Some(11.));
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(config.font.normal().family, "JetBrainsMono Nerd Font Mono");
+            assert_eq!(value["window"]["decorations"].as_str(), Some("Transparent"));
+            assert_eq!(value["window"]["option_as_alt"].as_str(), Some("Both"));
+        }
+    }
+
+    #[test]
+    fn user_imports_reload_and_cli_override_embedded_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let imported = directory.path().join("theme.toml");
+        let path = directory.path().join("alacritty.toml");
+        fs::write(&imported, "[font]\nsize = 13.0\n[window.padding]\nx = 20\n").unwrap();
+        fs::write(&path, "[general]\nimport = ['theme.toml']\n[window.padding]\nx = 30\n").unwrap();
+
+        let mut options = Options::default();
+        options.config_options =
+            crate::cli::ParsedOptions::from_options(&["font.size=14.0".into()]);
+        let config = load_config(Some(path.clone()), &mut options);
+        assert_eq!(config.window.padding(1.), (30., 24.));
+        assert_eq!(config.font.size(), crossfont::Size::new(14.));
+        assert_eq!(config.config_paths, vec![path.clone(), imported]);
+
+        fs::write(&path, "[window.padding]\nx = 40\n").unwrap();
+        let config = reload(&path, &mut Options::default()).unwrap();
+        assert_eq!(config.window.padding(1.), (40., 24.));
+        assert_eq!(config.font.size(), crossfont::Size::new(11.));
+        assert_eq!(config.config_paths, vec![path.clone()]);
+
+        fs::remove_file(&path).unwrap();
+        let config = load_config(Some(path.clone()), &mut Options::default());
+        assert_eq!(config.window.padding(1.), (12., 24.));
+        assert_eq!(config.config_paths, vec![path]);
+    }
+
+    #[test]
+    fn embedded_defaults_leave_binding_overrides_to_the_binding_deserializer() {
+        // Config merges concatenate arrays. Embedded keyboard bindings would execute alongside
+        // matching user bindings, instead of being replaced like Rust's default bindings.
+        assert!(BUILTIN_CONFIG.get("keyboard").is_none());
+
+        let value = toml::from_str(
+            r#"[keyboard]
+            bindings = [{ key = "L", mods = "Control", action = "None" }]"#,
+        )
+        .unwrap();
+        let config = deserialize_ui_config(value).unwrap();
+        let key = BindingKey::Keycode {
+            key: winit::keyboard::Key::Character("l".into()),
+            location: bindings::KeyLocation::Standard,
+        };
+        let matching: Vec<_> = config
+            .key_bindings()
+            .iter()
+            .filter(|binding| {
+                binding.is_triggered_by(
+                    BindingMode::empty(),
+                    winit::keyboard::ModifiersState::CONTROL,
+                    &key,
+                )
+            })
+            .collect();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].action, Action::None);
+    }
 
     #[test]
     fn empty_config() {

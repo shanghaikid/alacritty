@@ -24,6 +24,8 @@
   <string>1</string>
   <key>CFBundleIconFile</key>
   <string>alacritty.icns</string>
+  <key>ATSApplicationFontsPath</key>
+  <string>fonts</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSMainNibFile</key>

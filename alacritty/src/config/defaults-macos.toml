@@ -1,0 +1,10 @@
+# macOS additions to defaults.toml; fonts are included in Alacritty.app.
+[window]
+decorations = "Transparent"
+option_as_alt = "Both"
+
+[font]
+normal = { family = "JetBrainsMono Nerd Font Mono", style = "Light" }
+bold = { style = "Regular" }
+italic = { style = "Light Italic" }
+bold_italic = { style = "Italic" }

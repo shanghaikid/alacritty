@@ -578,6 +578,11 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
 
 #[cfg(all(target_os = "macos", not(test)))]
 pub fn platform_key_bindings() -> Vec<KeyBinding> {
+    macos_key_bindings()
+}
+
+#[cfg(target_os = "macos")]
+fn macos_key_bindings() -> Vec<KeyBinding> {
     bindings!(
         KeyBinding;
         Insert, ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::Esc("\x1b[2;2~".into());
@@ -585,6 +590,11 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
         "t",    ModifiersState::SUPER;                                         Action::CreateNewTab;
         "]",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectNextTab;
         "[",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectPreviousTab;
+        // Shift produces braces on layouts such as US English.
+        "}",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectNextTab;
+        "{",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectPreviousTab;
+        Tab,    ModifiersState::CONTROL;                                       Action::SelectNextTab;
+        Tab,    ModifiersState::CONTROL | ModifiersState::SHIFT;               Action::SelectPreviousTab;
         Tab,    ModifiersState::SUPER;                                         Action::SelectNextTab;
         Tab,    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectPreviousTab;
         "1",    ModifiersState::SUPER;                                         Action::SelectTab1;
@@ -605,7 +615,7 @@ pub fn platform_key_bindings() -> Vec<KeyBinding> {
         "v",    ModifiersState::SUPER, ~BindingMode::VI;                       Action::Paste;
         "v",    ModifiersState::SUPER, +BindingMode::VI, +BindingMode::SEARCH; Action::Paste;
         "n",    ModifiersState::SUPER;                                         Action::CreateNewWindow;
-        "f",    ModifiersState::CONTROL | ModifiersState::SUPER;               Action::ToggleFullscreen;
+        "f",    ModifiersState::CONTROL | ModifiersState::SUPER;               Action::ToggleMaximized;
         "c",    ModifiersState::SUPER;                                         Action::Copy;
         "c",    ModifiersState::SUPER, +BindingMode::VI, ~BindingMode::SEARCH; Action::ClearSelection;
         "h",    ModifiersState::SUPER;                                         Action::Hide;
@@ -1251,6 +1261,59 @@ mod tests {
     use winit::keyboard::ModifiersState;
 
     type MockBinding = Binding<usize>;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_tab_bindings_and_user_overrides() {
+        let defaults = macos_key_bindings();
+        for (character, action) in [
+            ("[", Action::SelectPreviousTab),
+            ("{", Action::SelectPreviousTab),
+            ("]", Action::SelectNextTab),
+            ("}", Action::SelectNextTab),
+        ] {
+            let key = BindingKey::Keycode {
+                key: Key::Character(character.into()),
+                location: KeyLocation::Standard,
+            };
+            let matches: Vec<_> = defaults
+                .iter()
+                .filter(|binding| {
+                    binding.is_triggered_by(
+                        BindingMode::empty(),
+                        ModifiersState::SUPER | ModifiersState::SHIFT,
+                        &key,
+                    )
+                })
+                .collect();
+            assert_eq!(matches.len(), 1);
+            assert_eq!(matches[0].action, action);
+        }
+
+        let custom: toml::Value = toml::from_str(
+            r#"bindings = [{ key = "}", mods = "Command|Shift", chars = "\u0002n" }]"#,
+        )
+        .unwrap();
+        let bindings =
+            crate::config::ui_config::deserialize_bindings(custom["bindings"].clone(), defaults)
+                .unwrap();
+        let key = BindingKey::Keycode {
+            key: Key::Character("}".into()),
+            location: KeyLocation::Standard,
+        };
+        let matches: Vec<_> = bindings
+            .iter()
+            .filter(|binding| {
+                binding.is_triggered_by(
+                    BindingMode::empty(),
+                    ModifiersState::SUPER | ModifiersState::SHIFT,
+                    &key,
+                )
+            })
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].action, Action::Esc("\x02n".into()));
+    }
 
     impl Default for MockBinding {
         fn default() -> Self {
