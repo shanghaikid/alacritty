@@ -19,3 +19,6 @@ incremental = false
 [workspace.dependencies]
 toml = "0.9.11"
 toml_edit = "0.24.0"
+
+[patch.crates-io]
+winit = { git = "https://github.com/shanghaikid/winit.git", rev = "c73f0893b0f3d4e2bb6231d94e742434f36d330c" }
