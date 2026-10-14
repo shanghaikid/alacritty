@@ -6,7 +6,7 @@ file or a separate font installation.
 
 ## Included
 
-- Tokyo Night colors, a block cursor without blinking, and 11-point text.
+- Catppuccin Mocha colors, a block cursor without blinking, and 11-point text.
 - Window padding of 12 × 24, dynamic padding, and maximized startup.
 - On macOS, a transparent title bar and both Option keys acting as Alt.
 - 100,000 lines of history, selection copied to the clipboard, and the mouse
@@ -32,6 +32,10 @@ Key bindings stay in Rust so an explicit user binding replaces its matching
 default, instead of running both actions. Existing tmux launch commands and
 tmux key bindings continue to work when supplied by a user configuration.
 This fork does not include tmux configuration or require tmux to start.
+
+The built-in colors follow the official
+[Catppuccin Mocha palette](https://github.com/catppuccin/alacritty/blob/main/catppuccin-mocha.toml),
+licensed under MIT; the original notice is in `LICENSE-CATPPUCCIN`.
 
 ## Fonts and packaging
 

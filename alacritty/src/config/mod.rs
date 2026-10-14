@@ -446,7 +446,7 @@ mod tests {
         assert!(config.pty_config().shell.is_none());
 
         let value = toml::Value::try_from(&config).unwrap();
-        assert_eq!(value["colors"]["primary"]["background"].as_str(), Some("#1a1b26"));
+        assert_eq!(value["colors"]["primary"]["background"].as_str(), Some("#1e1e2e"));
         assert_eq!(value["font"]["size"].as_float(), Some(11.));
         #[cfg(target_os = "macos")]
         {
