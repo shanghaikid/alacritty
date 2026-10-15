@@ -317,6 +317,21 @@ impl ApplicationHandler<Event> for Processor {
                     }
                 }
             },
+            #[cfg(unix)]
+            (EventType::IpcProgramStatus(stream), window_id) => {
+                let windows: Vec<_> = self
+                    .windows
+                    .iter()
+                    .filter(|(id, _)| window_id.is_none() || window_id == Some(*id))
+                    .map(|(id, context)| context.program_status_snapshot(*id))
+                    .collect();
+                if let Ok(mut stream) = stream.try_clone() {
+                    ipc::send_reply(
+                        &mut stream,
+                        SocketReply::ProgramStatus(serde_json::to_string(&windows).unwrap()),
+                    );
+                }
+            },
             // Process IPC config requests.
             #[cfg(unix)]
             (EventType::IpcGetConfig(stream), window_id) => {
@@ -523,7 +538,7 @@ pub struct Event {
     window_id: Option<WindowId>,
 
     /// Event payload.
-    payload: EventType,
+    pub(crate) payload: EventType,
 }
 
 impl Event {
@@ -550,6 +565,9 @@ pub enum EventType {
     IpcConfig(IpcConfig),
     #[cfg(unix)]
     IpcGetConfig(Arc<UnixStream>),
+    #[cfg(unix)]
+    IpcProgramStatus(Arc<UnixStream>),
+    ProgramStatus,
     BlinkCursor,
     BlinkCursorTimeout,
     SearchNext,
@@ -1841,6 +1859,7 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
     pub fn handle_event(&mut self, event: WinitEvent<Event>) {
         match event {
             WinitEvent::UserEvent(Event { payload, .. }) => match payload {
+                EventType::ProgramStatus => (),
                 EventType::SearchNext => self.ctx.goto_match(None),
                 EventType::Scroll(scroll) => self.ctx.scroll(scroll),
                 EventType::BlinkCursor => {
@@ -1865,6 +1884,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                     self.ctx.display.pending_update.dirty = true;
                 },
                 EventType::Terminal(event) => match event {
+                    TerminalEvent::ProgramStatusChanged => (),
+                    TerminalEvent::PtyWriteStatic(text) => {
+                        self.ctx.notifier.notify(text.as_bytes())
+                    },
                     TerminalEvent::Title(title) => {
                         if !self.ctx.preserve_title && self.ctx.config.window.dynamic_title {
                             self.ctx.window().set_title(title);
@@ -1929,7 +1952,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                     TerminalEvent::Exit | TerminalEvent::ChildExit(_) | TerminalEvent::Wakeup => (),
                 },
                 #[cfg(unix)]
-                EventType::IpcConfig(_) | EventType::IpcGetConfig(..) | EventType::Shutdown => (),
+                EventType::IpcConfig(_)
+                | EventType::IpcGetConfig(..)
+                | EventType::IpcProgramStatus(..)
+                | EventType::Shutdown => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)

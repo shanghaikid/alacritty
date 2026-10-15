@@ -117,6 +117,9 @@ pub struct Window {
 
     /// Current window title.
     title: String,
+    status_label: String,
+    displayed_title: String,
+    pub status_title_updates: u64,
 
     is_x11: bool,
     current_mouse_cursor: CursorIcon,
@@ -206,7 +209,10 @@ impl Window {
         Ok(Self {
             hold: options.terminal_options.hold,
             requested_redraw: false,
+            displayed_title: identity.title.clone(),
             title: identity.title,
+            status_label: String::new(),
+            status_title_updates: 0,
             current_mouse_cursor,
             mouse_visible: true,
             has_frame: true,
@@ -247,7 +253,31 @@ impl Window {
     #[inline]
     pub fn set_title(&mut self, title: String) {
         self.title = title;
-        self.window.set_title(&self.title);
+        self.refresh_title();
+    }
+
+    pub fn set_program_status(&mut self, label: &str) {
+        if self.status_label == label {
+            return;
+        }
+        self.status_label.clear();
+        self.status_label.push_str(label);
+        self.status_title_updates += 1;
+        self.refresh_title();
+    }
+
+    fn refresh_title(&mut self) {
+        self.displayed_title.clear();
+        self.displayed_title.push_str(&self.title);
+        if !self.status_label.is_empty() {
+            self.displayed_title.push_str(" — ");
+            self.displayed_title.push_str(&self.status_label);
+        }
+        self.window.set_title(&self.displayed_title);
+    }
+
+    pub fn displayed_title(&self) -> &str {
+        &self.displayed_title
     }
 
     /// Get the window title.

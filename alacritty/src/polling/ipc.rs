@@ -79,6 +79,14 @@ impl IpcListener {
                 let event = Event::new(EventType::IpcConfig(ipc_config), window_id);
                 let _ = self.event_proxy.send_event(event);
             },
+            SocketMessage::ProgramStatus(config) => {
+                let window_id =
+                    config.window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
+                let _ = self.event_proxy.send_event(Event::new(
+                    EventType::IpcProgramStatus(Arc::new(stream)),
+                    window_id,
+                ));
+            },
             SocketMessage::GetConfig(config) => {
                 let window_id =
                     config.window_id.and_then(|id| u64::try_from(id).ok()).map(WindowId::from);
@@ -125,7 +133,8 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
     // Ensure reply matches request.
     match (message, &reply) {
         // Write requested config to STDOUT.
-        (SocketMessage::GetConfig(..), SocketReply::GetConfig(config)) => {
+        (SocketMessage::GetConfig(..), SocketReply::GetConfig(config))
+        | (SocketMessage::ProgramStatus(..), SocketReply::ProgramStatus(config)) => {
             println!("{config}");
             Ok(())
         },
@@ -235,4 +244,5 @@ pub fn socket_prefix() -> String {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SocketReply {
     GetConfig(String),
+    ProgramStatus(String),
 }

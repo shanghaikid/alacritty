@@ -21,6 +21,11 @@ file or a separate font installation.
   Enter still sends CR. Apps using the kitty keyboard protocol receive native
   Shift+Enter encoding, and Alacritty search/vi mode retain their own bindings.
 
+- OSC 7501 revision 0.4 support, enabled without configuration. Programs can
+  report structured state/progress; native titles retain their normal title
+  and append a bounded status label. Updates are coalesced and capped at 10 Hz.
+  See [protocol behavior, limits, benchmarks and tmux support](OSC7501.md).
+
 The Baidu Pinyin Shift/Enter fix remains pinned to the same patched winit.
 
 ## Configuration precedence

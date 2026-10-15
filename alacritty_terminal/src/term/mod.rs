@@ -316,6 +316,11 @@ pub struct Term<T> {
     /// term is set.
     title_stack: Vec<Option<String>>,
 
+    /// Protocol records belong to the PTY, independently of either screen.
+    pub program_status: alacritty_status::Store,
+    status_dirty: bool,
+    status_event_pending: bool,
+
     /// The stack for the keyboard modes.
     keyboard_mode_stack: Vec<KeyboardModes>,
 
@@ -437,6 +442,9 @@ impl<T> Term<T> {
             cursor_style: Default::default(),
             colors: color::Colors::default(),
             title_stack: Default::default(),
+            program_status: Default::default(),
+            status_dirty: false,
+            status_event_pending: false,
             is_focused: Default::default(),
             selection: Default::default(),
             title: Default::default(),
@@ -807,7 +815,26 @@ impl<T> Term<T> {
     where
         T: EventListener,
     {
+        self.status_dirty |= self.program_status.expire_transient();
+        self.flush_program_status();
         self.event_proxy.send_event(Event::Exit);
+    }
+
+    /// At most one queued UI event, regardless of report count or UI backlog.
+    pub fn flush_program_status(&mut self)
+    where
+        T: EventListener,
+    {
+        if self.status_dirty && !self.status_event_pending {
+            self.status_event_pending = true;
+            self.status_dirty = false;
+            self.event_proxy.send_event(Event::ProgramStatusChanged);
+        }
+    }
+
+    pub fn acknowledge_program_status(&mut self) {
+        self.status_event_pending = false;
+        self.status_dirty = false;
     }
 
     /// Toggle the vi mode.
@@ -1057,6 +1084,22 @@ impl<T> Dimensions for Term<T> {
 }
 
 impl<T: EventListener> Handler for Term<T> {
+    fn program_status(&mut self, body: &[u8], bell_terminated: bool) {
+        use alacritty_status::{Outcome, Terminator};
+        let terminator = if bell_terminated { Terminator::Bel } else { Terminator::St };
+        match self.program_status.apply(body, terminator) {
+            Outcome::Changed => self.status_dirty = true,
+            Outcome::Query(terminator) => {
+                self.event_proxy.send_event(Event::PtyWriteStatic(terminator.reply()))
+            },
+            Outcome::Unchanged | Outcome::Rejected => (),
+        }
+    }
+
+    fn shell_prompt(&mut self) {
+        self.status_dirty |= self.program_status.expire_transient();
+    }
+
     /// A character to be displayed.
     #[inline(never)]
     fn input(&mut self, c: char) {
@@ -1833,6 +1876,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Reset all important fields in the term struct.
     #[inline]
     fn reset_state(&mut self) {
+        self.status_dirty |= self.program_status.reset();
         if self.mode.contains(TermMode::ALT_SCREEN) {
             mem::swap(&mut self.grid, &mut self.inactive_grid);
         }

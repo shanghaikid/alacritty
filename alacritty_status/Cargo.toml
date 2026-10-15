@@ -1,0 +1,22 @@
+[package]
+name = "alacritty_status"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "Apache-2.0 OR MIT"
+description = "Bounded OSC 7501 program status records for terminal emulators"
+
+[dependencies]
+base64 = "0.22.0"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[[bench]]
+name = "status"
+harness = false
+
+[lib]
+crate-type = ["rlib", "staticlib"]

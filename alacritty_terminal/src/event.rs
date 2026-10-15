@@ -39,6 +39,12 @@ pub enum Event {
     /// Write some text to the PTY.
     PtyWrite(String),
 
+    /// Constant protocol reply, without allocating a String.
+    PtyWriteStatic(&'static str),
+
+    /// Coalesced program status change; the UI reads the latest shared state.
+    ProgramStatusChanged,
+
     /// Request to write the text area size.
     TextAreaSizeRequest(Arc<dyn Fn(WindowSize) -> String + Sync + Send + 'static>),
 
@@ -65,6 +71,8 @@ impl Debug for Event {
             Event::ClipboardLoad(ty, _) => write!(f, "ClipboardLoad({ty:?})"),
             Event::TextAreaSizeRequest(_) => write!(f, "TextAreaSizeRequest"),
             Event::ColorRequest(index, _) => write!(f, "ColorRequest({index})"),
+            Event::PtyWriteStatic(text) => write!(f, "PtyWriteStatic({text})"),
+            Event::ProgramStatusChanged => write!(f, "ProgramStatusChanged"),
             Event::PtyWrite(text) => write!(f, "PtyWrite({text})"),
             Event::Title(title) => write!(f, "Title({title})"),
             Event::CursorBlinkingChange => write!(f, "CursorBlinkingChange"),

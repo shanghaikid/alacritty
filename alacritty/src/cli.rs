@@ -263,6 +263,9 @@ pub enum SocketMessage {
 
     /// Read runtime Alacritty configuration.
     GetConfig(IpcGetConfig),
+
+    /// Inspect program status via the local administrative socket (never the PTY).
+    ProgramStatus(IpcGetConfig),
 }
 
 /// Migrate the configuration file.

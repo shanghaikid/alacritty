@@ -112,6 +112,7 @@ where
     {
         let mut unprocessed = 0;
         let mut processed = 0;
+        let mut grid_activity = false;
 
         // Reserve the next terminal lock for PTY reading.
         let _terminal_lease = Some(self.terminal.lease());
@@ -152,6 +153,7 @@ where
 
             // Parse the incoming bytes.
             state.parser.advance(&mut **terminal, &buf[..unprocessed]);
+            grid_activity |= state.parser.take_non_status_activity();
 
             processed += unprocessed;
             unprocessed = 0;
@@ -162,8 +164,12 @@ where
             }
         }
 
+        if let Some(terminal) = &mut terminal {
+            terminal.flush_program_status();
+        }
+
         // Queue terminal redraw unless all processed bytes were synchronized.
-        if state.parser.sync_bytes_count() < processed && processed > 0 {
+        if grid_activity && state.parser.sync_bytes_count() < processed && processed > 0 {
             self.event_proxy.send_event(Event::Wakeup);
         }
 

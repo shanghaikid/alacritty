@@ -94,9 +94,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "alacritty_status"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+]
+
+[[package]]
 name = "alacritty_terminal"
 version = "0.26.0"
 dependencies = [
+ "alacritty_status",
  "base64",
  "bitflags 2.9.4",
  "home",
@@ -2119,8 +2128,7 @@ dependencies = [
 [[package]]
 name = "vte"
 version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+source = "git+https://github.com/shanghaikid/vte.git?rev=1bb920a86dff65c44e3ac07a0c5e6fac956013ac#1bb920a86dff65c44e3ac07a0c5e6fac956013ac"
 dependencies = [
  "arrayvec",
  "bitflags 2.9.4",

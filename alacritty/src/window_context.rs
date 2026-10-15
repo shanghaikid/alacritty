@@ -35,13 +35,15 @@ use crate::clipboard::Clipboard;
 use crate::config::UiConfig;
 use crate::display::Display;
 use crate::display::window::Window;
+use crate::event::EventType;
 use crate::event::{
     ActionContext, Event, EventProxy, InlineSearchState, Mouse, SearchState, TouchPurpose,
 };
 #[cfg(unix)]
 use crate::logging::LOG_TARGET_IPC_CONFIG;
 use crate::message_bar::MessageBuffer;
-use crate::scheduler::Scheduler;
+use crate::scheduler::{Scheduler, TimerId, Topic};
+
 use crate::{input, renderer};
 
 /// Event context for one individual Alacritty window.
@@ -61,6 +63,8 @@ pub struct WindowContext {
     touch: TouchPurpose,
     occluded: bool,
     preserve_title: bool,
+    status_label: String,
+    status_last_shown: Option<Instant>,
     #[cfg(not(windows))]
     master_fd: RawFd,
     #[cfg(not(windows))]
@@ -234,6 +238,8 @@ impl WindowContext {
         // Create context for the Alacritty window.
         Ok(WindowContext {
             preserve_title,
+            status_label: String::new(),
+            status_last_shown: None,
             terminal,
             display,
             #[cfg(not(windows))]
@@ -454,8 +460,38 @@ impl WindowContext {
         };
         let mut processor = input::Processor::new(context);
 
+        let mut status_changed = false;
+        let mut status_timer = false;
         for event in self.event_queue.drain(..) {
+            match &event {
+                WinitEvent::UserEvent(Event {
+                    payload: EventType::Terminal(TerminalEvent::ProgramStatusChanged),
+                    ..
+                }) => status_changed = true,
+                WinitEvent::UserEvent(Event { payload: EventType::ProgramStatus, .. }) => {
+                    status_timer = true
+                },
+                _ => (),
+            }
             processor.handle_event(event);
+        }
+
+        if status_changed {
+            terminal.acknowledge_program_status();
+        }
+        if status_changed || status_timer {
+            let interval = std::time::Duration::from_millis(100);
+            let elapsed = self.status_last_shown.map_or(interval, |last| last.elapsed());
+            let timer_id = TimerId::new(Topic::ProgramStatus, self.id());
+            if status_timer || elapsed >= interval {
+                scheduler.unschedule(timer_id);
+                terminal.program_status.display_label(&mut self.status_label);
+                self.display.window.set_program_status(&self.status_label);
+                self.status_last_shown = Some(Instant::now());
+            } else if !scheduler.scheduled(timer_id) {
+                let event = Event::new(EventType::ProgramStatus, self.id());
+                scheduler.schedule(event, interval - elapsed, false, timer_id);
+            }
         }
 
         // Process DisplayUpdate events.
@@ -491,6 +527,18 @@ impl WindowContext {
         {
             self.display.window.request_redraw();
         }
+    }
+
+    #[cfg(unix)]
+    pub fn program_status_snapshot(&self, id: WindowId) -> serde_json::Value {
+        let terminal = self.terminal.lock();
+        serde_json::json!({
+            "window_id": u64::from(id),
+            "title": self.display.window.displayed_title(),
+            "title_updates": self.display.window.status_title_updates,
+            "generation": terminal.program_status.generation(),
+            "records": terminal.program_status.records().collect::<Vec<_>>(),
+        })
     }
 
     /// ID of this terminal context.
