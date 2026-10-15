@@ -128,6 +128,20 @@ pub struct CellExtra {
     hyperlink: Option<Hyperlink>,
 }
 
+impl CellExtra {
+    /// Combining characters, borrowed from an immutable cell snapshot.
+    #[inline]
+    pub fn zerowidth(&self) -> &[char] {
+        &self.zerowidth
+    }
+
+    /// Hyperlink, borrowed without incrementing its reference count.
+    #[inline]
+    pub fn hyperlink(&self) -> Option<&Hyperlink> {
+        self.hyperlink.as_ref()
+    }
+}
+
 /// Content and attributes of a single cell in the terminal grid.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

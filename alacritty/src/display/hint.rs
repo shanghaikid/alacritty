@@ -326,6 +326,25 @@ pub fn visible_regex_match_iter<'a, T>(
     start.line = start.line.max(viewport_start - MAX_SEARCH_LINES);
     end.line = end.line.min(viewport_end + MAX_SEARCH_LINES);
 
+    regex
+        .cached_matches(term, start, end, viewport_end)
+        .iter()
+        .cloned()
+        .skip_while(move |rm| rm.end().line < viewport_start)
+        .take_while(move |rm| rm.start().line <= viewport_end)
+}
+
+fn scan_visible_regex_match_iter<'a, T>(
+    term: &'a Term<T>,
+    regex: &'a mut RegexSearch,
+) -> impl Iterator<Item = Match> + 'a {
+    let viewport_start = Line(-(term.grid().display_offset() as i32));
+    let viewport_end = viewport_start + term.bottommost_line();
+    let mut start = term.line_search_left(Point::new(viewport_start, Column(0)));
+    let mut end = term.line_search_right(Point::new(viewport_end, Column(0)));
+    start.line = start.line.max(viewport_start - MAX_SEARCH_LINES);
+    end.line = end.line.min(viewport_end + MAX_SEARCH_LINES);
+
     RegexIter::new(start, end, Direction::Right, term, regex)
         .skip_while(move |rm| rm.end().line < viewport_start)
         .take_while(move |rm| rm.start().line <= viewport_end)
@@ -375,7 +394,9 @@ fn regex_match_at<T>(
     regex: &mut RegexSearch,
     post_processing: bool,
 ) -> Option<Match> {
-    let regex_match = visible_regex_match_iter(term, regex).find(|rm| rm.contains(&point))?;
+    // Keep pointer queries lazy: an early URL match should not require scanning
+    // the rest of the viewport to populate the full-search cache.
+    let regex_match = scan_visible_regex_match_iter(term, regex).find(|rm| rm.contains(&point))?;
 
     // Apply post-processing and search for sub-matches if necessary.
     if post_processing {
@@ -590,11 +611,167 @@ impl<T> Iterator for HintPostProcessor<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use alacritty_terminal::event::VoidListener;
+    use alacritty_terminal::grid::Scroll;
     use alacritty_terminal::index::{Column, Line};
     use alacritty_terminal::term::test::mock_term;
-    use alacritty_terminal::vte::ansi::Handler;
+    use alacritty_terminal::term::{Config, cell::Flags, test::TermSize};
+    use alacritty_terminal::vte::ansi::{Handler, Processor};
 
     use super::*;
+
+    #[test]
+    fn cached_regex_matches_viewport_scan() {
+        // Compare against the previous whole-viewport algorithm at every cell,
+        // including hard/soft breaks, fullwidth characters, empty matches,
+        // anchors, greedy matches, offscreen wrapped text and scrolled history.
+        let text = "prefix https://example.com/a(b) tail\r\n中文 https://例子.com/x\r\n";
+        for columns in [9, 31, 80] {
+            let mut term = Term::new(Config::default(), &TermSize::new(columns, 12), VoidListener);
+            let mut parser: Processor = Processor::new();
+            parser.advance(&mut term, text.repeat(30).as_bytes());
+            for offset in [0, 3, 9] {
+                term.scroll_display(Scroll::Delta(offset));
+                for pattern in [
+                    r"https://[^ ]+",
+                    r".*",
+                    r"^prefix",
+                    r"tail$",
+                    r"",
+                    r"中文",
+                    r"a|ab",
+                    r"prefix.*",
+                    r".*tail",
+                    r"(?-u:\b)prefix(?-u:\b)",
+                ] {
+                    let mut expected_regex = RegexSearch::new(pattern).unwrap();
+                    let mut actual_regex = RegexSearch::new(pattern).unwrap();
+                    let matches: Vec<_> =
+                        scan_visible_regex_match_iter(&term, &mut expected_regex).collect();
+                    let first_line = -(term.grid().display_offset() as i32);
+                    for line in first_line..first_line + 12 {
+                        for column in 0..columns {
+                            let point = Point::new(Line(line), Column(column));
+                            let expected = matches.iter().find(|rm| rm.contains(&point)).cloned();
+                            assert_eq!(
+                                visible_regex_match_iter(&term, &mut actual_regex)
+                                    .find(|rm| rm.contains(&point)),
+                                expected,
+                                "pattern={pattern:?}, point={point:?}, columns={columns}, offset={offset}, matches={matches:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn point_regex_preserves_long_wrapped_bounds_and_post_processing() {
+        let mut term = Term::new(Config::default(), &TermSize::new(9, 12), VoidListener);
+        let mut parser: Processor = Processor::new();
+        parser.advance(
+            &mut term,
+            format!("https://example.com/{}(path).", "a".repeat(2500)).as_bytes(),
+        );
+        for offset in [0, 50, 110] {
+            term.scroll_display(Scroll::Delta(offset));
+            let mut regex = RegexSearch::new(r"https://[^ ]+").unwrap();
+            let matches: Vec<_> = scan_visible_regex_match_iter(&term, &mut regex).collect();
+            let first_line = -(term.grid().display_offset() as i32);
+            for line in first_line..first_line + 12 {
+                let point = Point::new(Line(line), Column(0));
+                let expected =
+                    matches.iter().find(|rm| rm.contains(&point)).cloned().and_then(|rm| {
+                        HintPostProcessor::new(&term, &mut regex, rm).find(|rm| rm.contains(&point))
+                    });
+                assert_eq!(regex_match_at(&term, point, &mut regex, true), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn cached_regex_follows_viewport_with_unchanged_search_bounds() {
+        let mut term = Term::new(Config::default(), &TermSize::new(9, 12), VoidListener);
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, "a".repeat(130).as_bytes());
+        let mut actual = RegexSearch::new("a").unwrap();
+        let mut expected = RegexSearch::new("a").unwrap();
+        // The logical line's start/end stay fixed while the visible end moves.
+        for offset in [0, 3, 0, 2, 1, 0] {
+            term.scroll_display(Scroll::Bottom);
+            term.scroll_display(Scroll::Delta(offset));
+            let matches: Vec<_> = scan_visible_regex_match_iter(&term, &mut expected).collect();
+            assert_eq!(visible_regex_match_iter(&term, &mut actual).collect::<Vec<_>>(), matches);
+        }
+    }
+
+    #[test]
+    fn cached_regex_matches_long_wrapped_unicode_after_edits() {
+        // Both search limits can truncate a logical line. Include leading wide
+        // spacers at the limits, and change ASCII cells without notifications.
+        for text in ["aaaaaaaa中文", "中a文", "https://example.com/中文"] {
+            for offset in [0, 110, 330] {
+                for pattern in ["a", "中", "文", "a|中文", ".*", "https://[^ ]+"] {
+                    let mut term =
+                        Term::new(Config::default(), &TermSize::new(9, 12), VoidListener);
+                    let mut parser: Processor = Processor::new();
+                    parser.advance(&mut term, text.repeat(600).as_bytes());
+                    term.scroll_display(Scroll::Delta(offset));
+                    let mut actual = RegexSearch::new(pattern).unwrap();
+                    let mut expected = RegexSearch::new(pattern).unwrap();
+                    for edit in [None, Some(0), Some(-1), Some(-120), Some(-240)] {
+                        if let Some(line) = edit {
+                            if let Some(cell) = term.grid_mut()[Line(line)][Column(0)..Column(9)]
+                                .iter_mut()
+                                .find(|cell| {
+                                    cell.c.is_ascii_alphabetic()
+                                        && !cell
+                                            .flags
+                                            .intersects(Flags::WIDE_CHAR | Flags::WIDE_CHAR_SPACER)
+                                })
+                            {
+                                cell.c = 'x';
+                            }
+                        }
+                        let expected: Vec<_> =
+                            scan_visible_regex_match_iter(&term, &mut expected).collect();
+                        let matches: Vec<_> =
+                            visible_regex_match_iter(&term, &mut actual).collect();
+                        assert_eq!(
+                            matches, expected,
+                            "text={text}, pattern={pattern}, offset={offset}, edit={edit:?}"
+                        );
+                        assert_eq!(
+                            visible_regex_match_iter(&term, &mut actual).collect::<Vec<_>>(),
+                            expected,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "manual release-mode visible regex benchmark"]
+    fn benchmark_visible_regex() {
+        use std::{hint::black_box, time::Instant};
+        let mut term = Term::new(Config::default(), &TermSize::new(240, 70), VoidListener);
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, (("a".repeat(239) + "\r\n").repeat(100)).as_bytes());
+        let config = UiConfig::default();
+        let regex = config.hints.enabled[0].content.regex.as_ref().unwrap();
+        regex.with_compiled(|regex| {
+            for _ in 0..20 {
+                black_box(visible_regex_match_iter(&term, regex).count());
+            }
+            let start = Instant::now();
+            for _ in 0..5000 {
+                black_box(visible_regex_match_iter(black_box(&term), regex).count());
+            }
+            println!("visible regex: {:.2} us/check", start.elapsed().as_secs_f64() * 1e6 / 5000.);
+        });
+    }
 
     #[test]
     fn hint_label_generation() {

@@ -11,7 +11,7 @@ use regex_automata::util::syntax::Config as SyntaxConfig;
 use regex_automata::{Anchored, Input, MatchKind};
 
 use crate::grid::{BidirectionalIterator, Dimensions, GridIterator, Indexed};
-use crate::index::{Boundary, Column, Direction, Point, Side};
+use crate::index::{Boundary, Column, Direction, Line, Point, Side};
 use crate::term::Term;
 use crate::term::cell::{Cell, Flags};
 
@@ -27,6 +27,16 @@ pub struct RegexSearch {
     left_rdfa: LazyDfa,
     right_rdfa: LazyDfa,
     right_fdfa: LazyDfa,
+    range_cache: Option<Box<RegexRangeCache>>,
+}
+
+/// Exact input snapshot for repeated bounded searches. Direct grid writes and
+/// alternate screens cannot leave stale matches behind. Allocated only on use.
+#[derive(Clone, Debug, Default)]
+struct RegexRangeCache {
+    range: Option<(Point, Point, Line, usize)>,
+    cells: Vec<(char, Flags)>,
+    matches: Vec<Match>,
 }
 
 impl RegexSearch {
@@ -74,7 +84,47 @@ impl RegexSearch {
         let right_rdfa =
             LazyDfa::new(search, config, syntax_config, thompson_config, Direction::Left, true)?;
 
-        Ok(RegexSearch { left_fdfa, left_rdfa, right_fdfa, right_rdfa })
+        Ok(RegexSearch { left_fdfa, left_rdfa, right_fdfa, right_rdfa, range_cache: None })
+    }
+
+    /// Cached forward matches, stopping after matches starting on `stop_line`.
+    ///
+    /// Validate the exact characters and flags rather than relying on hashes or
+    /// UI invalidation events. Colors and combining marks do not affect search.
+    /// `end` can extend past `stop_line` to finish matches on wrapped lines.
+    pub fn cached_matches<T>(
+        &mut self,
+        term: &Term<T>,
+        start: Point,
+        end: Point,
+        stop_line: Line,
+    ) -> &[Match] {
+        let mut cache = self.range_cache.take().unwrap_or_default();
+        // Include neighboring rows: wide-character spacer handling can inspect
+        // adjacent cells just outside the requested search bounds.
+        let first_line = (start.line - 1i32).max(term.topmost_line());
+        let last_line = (end.line + 1i32).min(term.bottommost_line());
+        let cells = || {
+            (first_line.0..=last_line.0)
+                .flat_map(|line| term.grid[Line(line)][Column(0)..Column(term.columns())].iter())
+                .map(|cell| (cell.c, cell.flags))
+        };
+        let range = Some((start, end, stop_line, term.columns()));
+        if cache.range != range || !cache.cells.iter().copied().eq(cells()) {
+            cache.cells.clear();
+            cache.cells.extend(cells());
+            cache.matches.clear();
+            // Preserve the caller's early exit. Exhausting RegexIter beyond the
+            // viewport can wrap around a truncated wide-character boundary and
+            // repeat matches indefinitely.
+            cache.matches.extend(
+                RegexIter::new(start, end, Direction::Right, term, self)
+                    .take_while(|rm| rm.start().line <= stop_line),
+            );
+            cache.range = range;
+        }
+        self.range_cache = Some(cache);
+        &self.range_cache.as_ref().unwrap().matches
     }
 }
 
@@ -671,9 +721,15 @@ impl<T> Iterator for RegexIter<'_, T> {
 
         let regex_match = self.next_match()?;
 
+        // A leading wide-character spacer can move a forward match's end into
+        // the next row, beyond the search limit. Stop before the next search
+        // would treat that overshoot as a wrapping range.
+        let passed_end = self.direction == Direction::Right
+            && self.point <= self.end
+            && *regex_match.end() >= self.end;
         self.point = *regex_match.end();
-        if self.point == self.end {
-            // Stop when the match terminates right on the end limit.
+        if self.point == self.end || passed_end {
+            // Stop when the match reaches or passes the end limit.
             self.done = true;
         } else {
             // Move the new search origin past the match.
@@ -691,6 +747,70 @@ mod tests {
     use crate::index::{Column, Line};
     use crate::term::Config;
     use crate::term::test::{TermSize, mock_term};
+
+    #[test]
+    fn regex_iter_stops_after_crossing_a_leading_wide_spacer() {
+        use crate::event::VoidListener;
+        use crate::vte::ansi::Processor;
+
+        let mut term = Term::new(Config::default(), &TermSize::new(9, 4), VoidListener);
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, "中a文".repeat(20).as_bytes());
+        let line = (term.topmost_line().0..term.bottommost_line().0)
+            .map(Line)
+            .find(|&line| {
+                term.grid[line][term.last_column()].flags.contains(Flags::LEADING_WIDE_CHAR_SPACER)
+            })
+            .unwrap();
+        let start = Point::new(line, Column(0));
+        let end = Point::new(line, term.last_column());
+        for pattern in ["中", "文", ".*"] {
+            let mut regex = RegexSearch::new(pattern).unwrap();
+            // Bound collection so a regression fails instead of hanging tests.
+            let matches: Vec<_> =
+                RegexIter::new(start, end, Direction::Right, &term, &mut regex).take(10).collect();
+            assert!(!matches.is_empty());
+            assert!(matches.len() < 10, "pattern={pattern}, matches={matches:?}");
+            assert!(matches.iter().all(|rm| rm.start().line <= line));
+        }
+    }
+
+    #[test]
+    fn cached_matches_follow_direct_writes_resize_and_alternate_screen() {
+        use crate::event::VoidListener;
+        use crate::vte::ansi::{Handler, Processor};
+
+        let mut term = Term::new(Config::default(), &TermSize::new(20, 3), VoidListener);
+        let mut parser: Processor = Processor::new();
+        let mut regex = RegexSearch::new("needle").unwrap();
+        parser.advance(&mut term, b"needle\r\nneedle");
+        let mut check = |term: &Term<VoidListener>, expected_count| {
+            let start = Point::new(Line(0), Column(0));
+            let end = Point::new(term.bottommost_line(), term.last_column());
+            let uncached: Vec<_> =
+                RegexIter::new(start, end, Direction::Right, term, &mut regex).collect();
+            assert_eq!(uncached.len(), expected_count);
+            assert_eq!(regex.cached_matches(term, start, end, end.line), uncached);
+            assert_eq!(regex.cached_matches(term, start, end, end.line), uncached);
+        };
+        check(&term, 2);
+        // No parser or event notification: validation must observe raw writes.
+        term.grid_mut()[Line(0)][Column(0)].c = 'x';
+        check(&term, 1);
+        term.resize(TermSize::new(10, 5));
+        check(&term, 1);
+        term.swap_alt();
+        check(&term, 0);
+        term.input('n');
+        term.input('e');
+        term.input('e');
+        term.input('d');
+        term.input('l');
+        term.input('e');
+        check(&term, 1);
+        term.swap_alt();
+        check(&term, 1);
+    }
 
     #[test]
     fn regex_right() {

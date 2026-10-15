@@ -44,7 +44,7 @@ use crate::config::window::Dimensions;
 use crate::config::window::StartupMode;
 use crate::display::bell::VisualBell;
 use crate::display::color::{List, Rgb};
-use crate::display::content::{RenderableContent, RenderableCursor};
+use crate::display::content::{RenderableCell, RenderableContent, RenderableCursor};
 use crate::display::cursor::IntoRects;
 use crate::display::damage::{DamageTracker, damage_y_to_viewport_y};
 use crate::display::hint::{HintMatch, HintState};
@@ -396,6 +396,8 @@ pub struct Display {
     context: ManuallyDrop<PossiblyCurrentContext>,
 
     glyph_cache: GlyphCache,
+    /// Reused snapshot buffer. Drained before the next terminal lock is acquired.
+    grid_cells: Vec<RenderableCell>,
     meter: Meter,
 }
 
@@ -525,6 +527,7 @@ impl Display {
             raw_window_handle,
             damage_tracker,
             glyph_cache,
+            grid_cells: Vec::new(),
             hint_state,
             size_info,
             font_size,
@@ -781,11 +784,9 @@ impl Display {
         search_state: &mut SearchState,
     ) {
         // Collect renderable content before the terminal is dropped.
+        let mut grid_cells = mem::take(&mut self.grid_cells);
         let mut content = RenderableContent::new(config, self, &terminal, search_state);
-        let mut grid_cells = Vec::new();
-        for cell in &mut content {
-            grid_cells.push(cell);
-        }
+        grid_cells.extend(&mut content);
         let selection_range = content.selection_range();
         let foreground_color = content.color(NamedColor::Foreground as usize);
         let background_color = content.color(NamedColor::Background as usize);
@@ -855,11 +856,11 @@ impl Display {
             let vi_highlighted_hint = &self.vi_highlighted_hint;
             let damage_tracker = &mut self.damage_tracker;
 
-            let cells = grid_cells.into_iter().map(|mut cell| {
+            let cells = grid_cells.drain(..).map(|mut cell| {
                 // Underline hints hovered by mouse or vi mode cursor.
                 if has_highlighted_hint {
                     let point = term::viewport_to_point(display_offset, cell.point);
-                    let hyperlink = cell.extra.as_ref().and_then(|extra| extra.hyperlink.as_ref());
+                    let hyperlink = cell.extra.as_ref().and_then(|extra| extra.hyperlink());
 
                     let should_highlight = |hint: &Option<HintMatch>| {
                         hint.as_ref().is_some_and(|hint| hint.should_highlight(point, hyperlink))
@@ -877,6 +878,8 @@ impl Display {
             });
             self.renderer.draw_cells(&size_info, glyph_cache, cells);
         }
+
+        self.grid_cells = grid_cells;
 
         let mut rects = lines.rects(&metrics, &size_info);
 

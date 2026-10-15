@@ -1,0 +1,75 @@
+Alacritty performance acceptance — 2026-10-15
+
+Platform: local Apple Silicon macOS. Baseline production source: a06031d.
+Baseline adds only the benchmark harness; snapshots allocate their Vec per frame.
+Final implementation: local working tree. Seven alternating before/after pairs;
+medians below. No compilation or native-window tests ran during final sampling.
+
+CPU operation                         before us   after us   reduction
+snapshot plain                          247.63     208.48      15.8%
+snapshot hyperlink                      550.16     330.28      40.0%
+snapshot combining                      806.23     258.45      67.9%
+snapshot underline-color                564.56     357.41      36.7%
+snapshot ansi-dense                     267.53     245.33       8.3%
+snapshot ansi-words                     259.22     245.42       5.3%
+visible regex                           121.59      13.79      88.7%
+
+Snapshot workload: 240 columns × 70 lines; actual RenderableContent iterator,
+color conversion, cell extras and buffer destruction/reuse. ANSI workloads cover
+alternating per-character colors and word-sized color runs. Search measurement
+is repeated complete visible matching on unchanged input, including exact cache
+validation; it is not a pointer-query or cache-miss speedup. New content requires
+a fresh scan. These are operation timings, not overall terminal/GPU throughput.
+
+Rejected experiment: native refresh-rate query (10000 calls/sample, three samples):
+SAMPLE 1
+screen=Built-in Retina Display method=CoreGraphics hz=120.000 query=25.588us
+screen=Built-in Retina Display method=AppKit hz=120.000 query=0.054us
+screen=U28P2G6B method=CoreGraphics hz=60.000 query=24.166us
+screen=U28P2G6B method=AppKit hz=60.000 query=0.053us
+SAMPLE 2
+screen=Built-in Retina Display method=CoreGraphics hz=120.000 query=24.490us
+screen=Built-in Retina Display method=AppKit hz=120.000 query=0.054us
+screen=U28P2G6B method=CoreGraphics hz=60.000 query=26.894us
+screen=U28P2G6B method=AppKit hz=60.000 query=0.056us
+SAMPLE 3
+screen=Built-in Retina Display method=CoreGraphics hz=120.000 query=24.990us
+screen=Built-in Retina Display method=AppKit hz=120.000 query=0.054us
+screen=U28P2G6B method=CoreGraphics hz=60.000 query=23.596us
+screen=U28P2G6B method=AppKit hz=60.000 query=0.053us
+
+AppKit reported the same 120 Hz internal / 60 Hz external rates in this setup.
+Review rejected this optimization: maximumFramesPerSecond is an integer maximum,
+not an equivalent display-mode refresh-rate query (including fractional rates).
+The installed, reviewed implementation retains the original winit query. These
+native-query numbers describe a rejected experiment, not a delivered speedup.
+Apple API reference: https://developer.apple.com/documentation/appkit/nsscreen/maximumframespersecond
+
+Correctness (after review):
+- cargo test --locked --workspace: PASS (293 tests, including 90 app, 134 terminal unit,
+  45 terminal reference tests; two opt-in benchmarks excluded from normal run).
+- Raw grid writes, resize, alternate screens, wrapped/empty/anchored/greedy regex
+  cases compare against the uncached matcher.
+- Review fixed forward regex iteration crossing a leading wide-character spacer:
+  a match can overshoot the search end, which previously allowed wraparound and
+  infinite repeated matches. The cache also retains the visible scan's early exit
+  and keys the viewport stop line. Long wrapped CJK, greedy patterns and viewport
+  changes with unchanged logical search bounds are covered by regressions.
+- Immutable render snapshots survive subsequent combining-character writes.
+- Default palette fast path checked across named/indexed/RGB, bold/dim/inverse.
+- Final app OpenGL readback: 1040 × 696, zero different pixels versus baseline.
+  Includes CJK, combining marks, emoji, OSC 8, colored underline, bold/italic,
+  hidden/inverse text and TUI borders. Capture uses only isolated test processes.
+- Final native PTY/status acceptance: PASS, 50000 changing and 50000 duplicate
+  reports; final status delivered, two native-title updates during change storm.
+- make app: PASS; bundle signed and verified before installation.
+
+Reproduce:
+cargo test --locked --workspace
+cargo test --locked --release -p alacritty --bin alacritty benchmark_ -- --ignored --nocapture --test-threads=1
+python3 extra/render-acceptance.py BEFORE_BINARY AFTER_BINARY OUTPUT_DIR
+python3 extra/program-status-acceptance.py AFTER_BINARY
+xcrun clang -O2 -fobjc-arc -Wno-deprecated-declarations extra/native-refresh-bench.m -framework AppKit -framework CoreVideo -o /tmp/refresh-bench
+
+Raw logs, samples and render images:
+/Users/zilliz/.local/share/alacritty/performance/2026-10-15

@@ -1,13 +1,14 @@
 use std::borrow::Cow;
 use std::num::NonZeroU32;
 use std::ops::Deref;
+use std::sync::Arc;
 use std::{cmp, mem};
 
 use alacritty_terminal::event::EventListener;
 use alacritty_terminal::grid::{Dimensions, Indexed};
 use alacritty_terminal::index::{Column, Line, Point};
 use alacritty_terminal::selection::SelectionRange;
-use alacritty_terminal::term::cell::{Cell, Flags, Hyperlink};
+use alacritty_terminal::term::cell::{Cell, CellExtra, Flags};
 use alacritty_terminal::term::search::{Match, RegexSearch};
 use alacritty_terminal::term::{self, RenderableContent as TerminalContent, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor};
@@ -35,6 +36,7 @@ pub struct RenderableContent<'a> {
     colors: &'a List,
     focused_match: Option<&'a Match>,
     size: &'a SizeInfo,
+    default_colors: Option<(Rgb, Rgb)>,
 }
 
 impl<'a> RenderableContent<'a> {
@@ -84,7 +86,45 @@ impl<'a> RenderableContent<'a> {
             search,
             config,
             hint,
+            default_colors: None,
         }
+    }
+
+    #[inline]
+    fn base_colors(&mut self, cell: &Cell) -> (Rgb, Rgb, f32) {
+        // Most cells, including syntax-highlighted text, use the default
+        // background. Resolve the palette once per frame, while keeping all
+        // selection/search/hint/cursor overlays independent of this cache.
+        if cell.bg == Color::Named(NamedColor::Background) && !cell.flags.contains(Flags::INVERSE) {
+            let (default_fg, bg) = match self.default_colors {
+                Some(colors) => colors,
+                None => {
+                    let colors = (
+                        self.color(NamedColor::Foreground as usize),
+                        self.color(NamedColor::Background as usize),
+                    );
+                    self.default_colors = Some(colors);
+                    colors
+                },
+            };
+            let fg = if cell.fg == Color::Named(NamedColor::Foreground)
+                && !cell.flags.intersects(Flags::DIM_BOLD)
+            {
+                default_fg
+            } else {
+                RenderableCell::compute_fg_rgb(self, cell.fg, cell.flags)
+            };
+            return (fg, bg, 0.);
+        }
+        let mut fg = RenderableCell::compute_fg_rgb(self, cell.fg, cell.flags);
+        let mut bg = RenderableCell::compute_bg_rgb(self, cell.bg);
+        let alpha = if cell.flags.contains(Flags::INVERSE) {
+            mem::swap(&mut fg, &mut bg);
+            1.
+        } else {
+            RenderableCell::compute_bg_alpha(self.config, cell.bg)
+        };
+        (fg, bg, alpha)
     }
 
     /// Viewport offset.
@@ -194,29 +234,13 @@ pub struct RenderableCell {
     pub bg_alpha: f32,
     pub underline: Rgb,
     pub flags: Flags,
-    pub extra: Option<Box<RenderableCellExtra>>,
-}
-
-/// Extra storage with rarely present fields for [`RenderableCell`], to reduce the cell size we
-/// pass around.
-#[derive(Clone, Debug)]
-pub struct RenderableCellExtra {
-    pub zerowidth: Option<Vec<char>>,
-    pub hyperlink: Option<Hyperlink>,
+    /// Share immutable extras with the grid; subsequent writes use copy-on-write.
+    pub extra: Option<Arc<CellExtra>>,
 }
 
 impl RenderableCell {
     fn new(content: &mut RenderableContent<'_>, cell: Indexed<&Cell>) -> Self {
-        // Lookup RGB values.
-        let mut fg = Self::compute_fg_rgb(content, cell.fg, cell.flags);
-        let mut bg = Self::compute_bg_rgb(content, cell.bg);
-
-        let mut bg_alpha = if cell.flags.contains(Flags::INVERSE) {
-            mem::swap(&mut fg, &mut bg);
-            1.0
-        } else {
-            Self::compute_bg_alpha(content.config, cell.bg)
-        };
+        let (mut fg, mut bg, mut bg_alpha) = content.base_colors(&cell);
 
         let is_selected = content.terminal_content.selection.is_some_and(|selection| {
             selection.contains_cell(
@@ -285,15 +309,7 @@ impl RenderableCell {
             .underline_color()
             .map_or(fg, |underline| Self::compute_fg_rgb(content, underline, flags));
 
-        let zerowidth = cell.zerowidth();
-        let hyperlink = cell.hyperlink();
-
-        let extra = (zerowidth.is_some() || hyperlink.is_some()).then(|| {
-            Box::new(RenderableCellExtra {
-                zerowidth: zerowidth.map(|zerowidth| zerowidth.to_vec()),
-                hyperlink,
-            })
-        });
+        let extra = cell.extra.clone();
 
         RenderableCell { flags, character, bg_alpha, point, fg, bg, underline, extra }
     }
@@ -550,3 +566,7 @@ impl Deref for HintMatches<'_> {
         self.matches.deref()
     }
 }
+
+#[cfg(test)]
+#[path = "snapshot_tests.rs"]
+mod snapshot_tests;

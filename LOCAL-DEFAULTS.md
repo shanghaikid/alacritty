@@ -81,6 +81,19 @@ Other platforms retain their native default font families.
 `TERM` retains upstream's automatic detection, using `xterm-256color` when
 Alacritty's terminfo has not been separately installed on a fresh system.
 
+## Rendering performance
+
+Rendering snapshots share immutable cell extras and reuse their character buffer.
+Default palette colors are resolved once per frame, including for syntax-highlighted
+text. Complete viewport searches reuse matches after validating an exact snapshot of
+characters and layout flags; pointer queries retain their lazy, early-exit scan.
+Frame scheduling retains the backend's display-mode query, preserving fractional
+refresh rates. `NSScreen.maximumFramesPerSecond` was benchmarked but rejected during
+review because a screen's integer maximum is not an equivalent refresh-rate query.
+
+See `extra/performance-results.txt` for measurements and reproducible checks. The
+CPU benchmarks measure individual operations, not overall application speed.
+
 ## Validation
 
 ```sh
