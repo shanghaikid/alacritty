@@ -586,6 +586,9 @@ fn macos_key_bindings() -> Vec<KeyBinding> {
     bindings!(
         KeyBinding;
         Insert, ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::Esc("\x1b[2;2~".into());
+        // Legacy tmux collapses modified Enter into CR. Codex accepts Ctrl-J as a newline.
+        // When an app enables the kitty protocol, let native key encoding preserve Shift.
+        Enter, ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH, ~BindingMode::DISAMBIGUATE_ESC_CODES, ~BindingMode::REPORT_ALL_KEYS_AS_ESC; Action::Esc("\n".into());
         // Tabbing api.
         "t",    ModifiersState::SUPER;                                         Action::CreateNewTab;
         "]",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectNextTab;
@@ -1261,6 +1264,40 @@ mod tests {
     use winit::keyboard::ModifiersState;
 
     type MockBinding = Binding<usize>;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_shift_enter_newline_only_in_legacy_input_mode() {
+        let defaults = macos_key_bindings();
+        let key = BindingKey::Keycode {
+            key: Key::Named(NamedKey::Enter),
+            location: KeyLocation::Standard,
+        };
+        let actions = |mode, modifiers| {
+            defaults
+                .iter()
+                .filter(|binding| binding.is_triggered_by(mode, modifiers, &key))
+                .map(|binding| binding.action.clone())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            actions(BindingMode::empty(), ModifiersState::SHIFT),
+            vec![Action::Esc("\n".into())],
+        );
+        assert!(actions(BindingMode::empty(), ModifiersState::empty()).is_empty());
+        assert!(
+            actions(BindingMode::empty(), ModifiersState::SHIFT | ModifiersState::SUPER).is_empty(),
+        );
+        for mode in [
+            BindingMode::VI,
+            BindingMode::SEARCH,
+            BindingMode::DISAMBIGUATE_ESC_CODES,
+            BindingMode::REPORT_ALL_KEYS_AS_ESC,
+        ] {
+            assert!(!actions(mode, ModifiersState::SHIFT).contains(&Action::Esc("\n".into())));
+        }
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

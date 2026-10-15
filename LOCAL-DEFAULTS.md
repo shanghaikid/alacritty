@@ -16,6 +16,10 @@ file or a separate font installation.
 - On macOS, Cmd+Shift+[ / ] (including the { / } logical keys) and Ctrl+Tab /
   Ctrl+Shift+Tab select native tabs; Ctrl+Cmd+F toggles maximization.
   Alacritty's existing Cmd+T, Cmd+1–9, and font-size shortcuts still apply.
+- On macOS, Shift+Enter sends Ctrl+J (LF) in legacy input mode, so Codex can
+  insert a newline through tmux without enhanced keyboard negotiation. Plain
+  Enter still sends CR. Apps using the kitty keyboard protocol receive native
+  Shift+Enter encoding, and Alacritty search/vi mode retain their own bindings.
 
 The Baidu Pinyin Shift/Enter fix remains pinned to the same patched winit.
 
