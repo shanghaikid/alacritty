@@ -82,6 +82,12 @@ def main(binary):
                 if process.poll() is not None: raise AssertionError((root/'alacritty.log').read_text())
                 time.sleep(.05)
             assert control.exists()
+            # A status buffered by synchronized output must arrive after timeout,
+            # even if the child sends no more bytes (no explicit ESU).
+            send(b'\x1b[?2026h\x1b]7501;state=working:app=sync\x07')
+            wait(lambda s: '[working] sync' in s['title'])
+            send(b'\x1b]7501;state=clear\x07')
+            wait(lambda s: not s['records'])
             send(b'\x1b]7501;state=working:app=build:progress=42\x1b\\')
             wait(lambda s: s['title'].endswith('[working 42%] build'))
             for ending in (b'\x1b\\', b'\x07'):

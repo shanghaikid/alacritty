@@ -22,5 +22,5 @@ toml = "0.9.11"
 toml_edit = "0.24.0"
 
 [patch.crates-io]
-vte = { git = "https://github.com/shanghaikid/vte.git", rev = "1bb920a86dff65c44e3ac07a0c5e6fac956013ac" }
+vte = { git = "https://github.com/shanghaikid/vte.git", rev = "72c90b0c01ee3d7cca2f6cad6b73f16a4a2baa99" }
 winit = { git = "https://github.com/shanghaikid/winit.git", rev = "c73f0893b0f3d4e2bb6231d94e742434f36d330c" }

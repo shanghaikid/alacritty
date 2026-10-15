@@ -249,7 +249,11 @@ where
 
                 // Handle synchronized update timeout.
                 if events.is_empty() && self.rx.peek().is_none() {
-                    state.parser.stop_sync(&mut *self.terminal.lock());
+                    {
+                        let mut terminal = self.terminal.lock();
+                        state.parser.stop_sync(&mut *terminal);
+                        terminal.flush_program_status();
+                    }
                     self.event_proxy.send_event(Event::Wakeup);
                     continue;
                 }
