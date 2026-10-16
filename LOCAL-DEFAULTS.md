@@ -9,6 +9,8 @@ file or a separate font installation.
 - Catppuccin Mocha colors, a block cursor without blinking, and 11-point text.
 - Window padding of 12 × 24, dynamic padding, and maximized startup.
 - On macOS, a transparent title bar and both Option keys acting as Alt.
+- On macOS, Cmd+Shift+L globally shows/hides Alacritty without Hammerspoon.
+  Summoning restores the last used window, including a minimized window.
 - 100,000 lines of history, selection copied to the clipboard, and the mouse
   pointer hidden while typing.
 - On macOS, JetBrainsMono Nerd Font Mono Light, Regular, Light Italic, and
@@ -27,6 +29,34 @@ file or a separate font installation.
   See [protocol behavior, limits, benchmarks and tmux support](OSC7501.md).
 
 The Baidu Pinyin Shift/Enter fix remains pinned to the same patched winit.
+
+## Native macOS global hotkey
+
+Alacritty registers Cmd+Shift+L with macOS while it is running. Press it in
+another application to show and focus Alacritty; press it with Alacritty active
+to hide the application. Hidden sessions continue running. This does not launch
+Alacritty after it has quit. In `--daemon` mode it creates a window when needed.
+
+Remove or disable your Hammerspoon binding for the same shortcut to avoid a
+registration conflict. The built-in shortcut needs no keyboard monitoring or
+Accessibility permission. Registration errors appear in the log; normal terminal
+operation continues. This feature does not install a login item or change Spaces
+or floating-window behavior.
+
+Override or disable it in `alacritty.toml`:
+
+```toml
+[keyboard.global_hotkey]
+enabled = true # false disables the global shortcut
+key = "KeyL" # physical winit KeyCode, e.g. KeyT, Space, F12
+mods = "Command|Shift" # also supports Control and Alt/Option
+```
+
+The shortcut follows physical key positions even with a non-Latin input method.
+At least one modifier is required. Configuration reload unregisters an old
+shortcut only after its replacement registers successfully. If another app owns
+the new combination, the previous shortcut remains active. CLI overrides are
+supported; per-window IPC overrides do not change application-wide registration.
 
 ## Configuration precedence
 
@@ -99,8 +129,18 @@ CPU benchmarks measure individual operations, not overall application speed.
 ```sh
 cargo test --locked -p alacritty --bin alacritty config::
 cargo build --locked --release --bin alacritty
+python3 extra/hotkey-acceptance.py /path/to/Alacritty.app # macOS native integration
 ```
 
 The configuration tests cover no user file, imports, partial overrides,
 reload, CLI overrides, missing-file fallback, and replacement of matching
 default key bindings.
+
+The macOS hotkey integration test uses a disposable app and a temporary native
+interposer. It verifies Carbon registration and callback dispatch, real window
+visibility and minimized-window restore, held-key suppression, hot reload, stale
+events, exclusive-registration conflicts, disable/reenable, and daemon window
+creation. It injects Carbon events at the registered application target; physical
+keyboard/WindowServer delivery should also be checked manually with Cmd+Shift+L.
+Existing applications, Hammerspoon configuration, and terminal sessions are not
+modified by the test.

@@ -748,6 +748,24 @@ _"(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file:|
 
 This section documents the *[keyboard]* table of the configuration file.
 
+*global_hotkey* = { enabled = true, key = _"KeyL"_, mods = _"Command|Shift"_ } # macOS only
+
+	A system-wide shortcut that hides Alacritty when it is active, or shows and
+	focuses its last used window otherwise. Minimized windows are restored.
+	Alacritty must remain running; this shortcut cannot launch an exited app.
+
+	In this fork the macOS default is Command+Shift+L. Set *enabled* to _false_
+	to disable it. Changes take effect when the configuration reloads.
+
+	*key* uses physical winit KeyCode names, such as _"KeyL"_, _"Space"_, or
+	_"F12"_, independent of the active input method. *mods* uses the same names
+	as _keyboard.bindings.mods_ and must include at least one modifier.
+
+	Disable the same shortcut in Hammerspoon or other applications before using
+	this feature. Registration conflicts are logged; if replacing a shortcut
+	fails, the previous shortcut remains active. In --daemon mode the shortcut
+	creates a window if none exists. Other platforms do not register a hotkey.
+
 *bindings* = [{ *<key>*, *<mods>*, *<mode>*, *<command>* | *<chars>* | *<action>* },]
 
 	To unset a default binding, you can use the action _"ReceiveChar"_ to remove

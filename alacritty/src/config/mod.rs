@@ -28,6 +28,8 @@ pub mod window;
 mod bindings;
 mod mouse;
 
+#[cfg(target_os = "macos")]
+pub(crate) use self::bindings::ModsWrapper;
 use crate::cli::Options;
 #[cfg(test)]
 pub use crate::config::bindings::Binding;
@@ -453,6 +455,9 @@ mod tests {
             assert_eq!(config.font.normal().family, "JetBrainsMono Nerd Font Mono");
             assert_eq!(value["window"]["decorations"].as_str(), Some("Transparent"));
             assert_eq!(value["window"]["option_as_alt"].as_str(), Some("Both"));
+            assert!(config.global_hotkey().enabled);
+            assert_eq!(value["keyboard"]["global_hotkey"]["key"].as_str(), Some("KeyL"));
+            assert_eq!(value["keyboard"]["global_hotkey"]["mods"].as_str(), Some("Command|Shift"));
         }
     }
 
@@ -488,7 +493,9 @@ mod tests {
     fn embedded_defaults_leave_binding_overrides_to_the_binding_deserializer() {
         // Config merges concatenate arrays. Embedded keyboard bindings would execute alongside
         // matching user bindings, instead of being replaced like Rust's default bindings.
-        assert!(BUILTIN_CONFIG.get("keyboard").is_none());
+        assert!(
+            BUILTIN_CONFIG.get("keyboard").and_then(|keyboard| keyboard.get("bindings")).is_none()
+        );
 
         let value = toml::from_str(
             r#"[keyboard]
@@ -518,6 +525,36 @@ mod tests {
     #[test]
     fn empty_config() {
         toml::from_str::<UiConfig>("").unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn global_hotkey_can_be_overridden_disabled_and_reloaded() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("alacritty.toml");
+        fs::write(&path, "[keyboard.global_hotkey]\nkey = 'F12'\nmods = 'Control|Alt'\n").unwrap();
+        let config = load_config(Some(path.clone()), &mut Options::default());
+        let hotkey = config.global_hotkey();
+        assert!(hotkey.enabled);
+        assert_eq!(hotkey.key, winit::keyboard::KeyCode::F12);
+        assert_eq!(
+            hotkey.mods.0,
+            winit::keyboard::ModifiersState::CONTROL | winit::keyboard::ModifiersState::ALT
+        );
+
+        fs::write(&path, "[keyboard.global_hotkey]\nenabled = false\n").unwrap();
+        assert!(!reload(&path, &mut Options::default()).unwrap().global_hotkey().enabled);
+
+        fs::write(&path, "").unwrap();
+        let config = reload(&path, &mut Options::default()).unwrap();
+        assert!(config.global_hotkey().enabled);
+        assert_eq!(config.global_hotkey().key, winit::keyboard::KeyCode::KeyL);
+
+        let mut options = Options::default();
+        options.config_options = crate::cli::ParsedOptions::from_options(&[
+            "keyboard.global_hotkey.enabled=false".into(),
+        ]);
+        assert!(!load_config(Some(path), &mut options).global_hotkey().enabled);
     }
 
     fn yaml_to_toml(contents: &str) -> String {

@@ -25,12 +25,18 @@ use crossfont::Size as FontSize;
 use glutin::config::Config as GlutinConfig;
 use glutin::display::GetGlDisplay;
 use log::{debug, error, info, warn};
+#[cfg(target_os = "macos")]
+use objc2::MainThreadMarker;
+#[cfg(target_os = "macos")]
+use objc2_app_kit::NSApplication;
 use winit::application::ApplicationHandler;
 use winit::event::{
     ElementState, Event as WinitEvent, Ime, Modifiers, MouseButton, StartCause,
     Touch as TouchEvent, WindowEvent,
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopProxy};
+#[cfg(target_os = "macos")]
+use winit::platform::macos::ActiveEventLoopExtMacOS;
 use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::WindowId;
 
@@ -59,6 +65,8 @@ use crate::display::window::{ImeInhibitor, Window};
 use crate::display::{Display, Preedit, SizeInfo};
 use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
 use crate::logging::{LOG_TARGET_CONFIG, LOG_TARGET_WINIT};
+#[cfg(target_os = "macos")]
+use crate::macos::hotkey::GlobalHotkey;
 use crate::message_bar::{Message, MessageBuffer};
 #[cfg(unix)]
 use crate::polling::ipc::{self, SocketReply};
@@ -98,6 +106,10 @@ pub struct Processor {
     global_ipc_options: ParsedOptions,
     cli_options: CliOptions,
     config: Rc<UiConfig>,
+    #[cfg(target_os = "macos")]
+    global_hotkey: Option<GlobalHotkey>,
+    #[cfg(target_os = "macos")]
+    last_focused_window: Option<WindowId>,
 }
 
 impl Processor {
@@ -141,6 +153,60 @@ impl Processor {
             #[cfg(unix)]
             global_ipc_options: Default::default(),
             config_monitor,
+            #[cfg(target_os = "macos")]
+            global_hotkey: None,
+            #[cfg(target_os = "macos")]
+            last_focused_window: None,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn update_global_hotkey(&mut self) {
+        if self.global_hotkey.is_none() && self.config.global_hotkey().enabled {
+            let mtm = MainThreadMarker::new().expect("event processor must run on the main thread");
+            match GlobalHotkey::new(self.proxy.clone(), mtm) {
+                Ok(hotkey) => self.global_hotkey = Some(hotkey),
+                Err(status) => {
+                    warn!("Could not install global hotkey handler (macOS error {status})");
+                    return;
+                },
+            }
+        }
+        if let Some(hotkey) = &mut self.global_hotkey {
+            if let Err(err) = hotkey.update(self.config.global_hotkey()) {
+                warn!(target: LOG_TARGET_CONFIG, "{err}");
+            }
+        }
+    }
+
+    /// Match the familiar application-wide toggle, restoring the last used window on summon.
+    #[cfg(target_os = "macos")]
+    fn toggle_global_hotkey(&mut self, event_loop: &ActiveEventLoop) {
+        let mtm = MainThreadMarker::new().expect("event processor must run on the main thread");
+        let app = NSApplication::sharedApplication(mtm);
+        let visible_key_window =
+            app.keyWindow().is_some_and(|window| window.isVisible() && !window.isMiniaturized());
+        if app.isActive() && !app.isHidden() && visible_key_window {
+            event_loop.hide_application();
+            return;
+        }
+
+        app.unhideWithoutActivation();
+        if self.windows.is_empty() {
+            // This also handles the initial GL setup in --daemon mode.
+            let options = self.cli_options.window_options.clone();
+            self.user_event(event_loop, Event::new(EventType::CreateWindow(options), None));
+        }
+
+        let window = self
+            .last_focused_window
+            .and_then(|id| self.windows.get(&id))
+            .or_else(|| self.windows.values().next());
+        if let Some(context) = window {
+            let window = &context.display.window;
+            window.set_minimized(false);
+            window.set_visible(true);
+            window.focus_window();
         }
     }
 
@@ -231,7 +297,14 @@ impl ApplicationHandler<Event> for Processor {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        if cause != StartCause::Init || self.cli_options.daemon {
+        if cause != StartCause::Init {
+            return;
+        }
+
+        #[cfg(target_os = "macos")]
+        self.update_global_hotkey();
+
+        if self.cli_options.daemon {
             return;
         }
 
@@ -259,6 +332,11 @@ impl ApplicationHandler<Event> for Processor {
         // Ignore all events we do not care about.
         if Self::skip_window_event(&event) {
             return;
+        }
+
+        #[cfg(target_os = "macos")]
+        if matches!(event, WindowEvent::Focused(true)) {
+            self.last_focused_window = Some(window_id);
         }
 
         let window_context = match self.windows.get_mut(&window_id) {
@@ -289,6 +367,12 @@ impl ApplicationHandler<Event> for Processor {
 
         // Handle events which don't mandate the WindowId.
         match (event.payload, event.window_id.as_ref()) {
+            #[cfg(target_os = "macos")]
+            (EventType::GlobalHotkey(id), _) => {
+                if self.global_hotkey.as_ref().is_some_and(|hotkey| hotkey.is_current(id)) {
+                    self.toggle_global_hotkey(event_loop);
+                }
+            },
             // Process IPC config update.
             #[cfg(unix)]
             (EventType::IpcConfig(ipc_config), window_id) => {
@@ -367,6 +451,9 @@ impl ApplicationHandler<Event> for Processor {
                 // Load config and update each terminal.
                 if let Ok(config) = config::reload(&path, &mut self.cli_options) {
                     self.config = Rc::new(config);
+
+                    #[cfg(target_os = "macos")]
+                    self.update_global_hotkey();
 
                     // Restart config monitor if imports changed.
                     if let Some(monitor) = self.config_monitor.take() {
@@ -505,6 +592,10 @@ impl ApplicationHandler<Event> for Processor {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        // Unregister before the native event loop (and its callback target) is torn down.
+        #[cfg(target_os = "macos")]
+        self.global_hotkey.take();
+
         if self.config.debug.print_events {
             info!("Exiting the event loop");
         }
@@ -556,6 +647,8 @@ impl From<Event> for WinitEvent<Event> {
 /// Alacritty events.
 #[derive(Debug, Clone)]
 pub enum EventType {
+    #[cfg(target_os = "macos")]
+    GlobalHotkey(u32),
     Terminal(TerminalEvent),
     ConfigReload(PathBuf),
     Message(Message),
@@ -1956,6 +2049,8 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 | EventType::IpcGetConfig(..)
                 | EventType::IpcProgramStatus(..)
                 | EventType::Shutdown => (),
+                #[cfg(target_os = "macos")]
+                EventType::GlobalHotkey(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)

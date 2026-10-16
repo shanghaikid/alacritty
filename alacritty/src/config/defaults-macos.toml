@@ -8,3 +8,8 @@ normal = { family = "JetBrainsMono Nerd Font Mono", style = "Light" }
 bold = { style = "Regular" }
 italic = { style = "Light Italic" }
 bold_italic = { style = "Italic" }
+
+[keyboard.global_hotkey]
+enabled = true
+key = "KeyL"
+mods = "Command|Shift"

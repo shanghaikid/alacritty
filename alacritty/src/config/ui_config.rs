@@ -34,6 +34,8 @@ use crate::config::scrolling::Scrolling;
 use crate::config::selection::Selection;
 use crate::config::terminal::Terminal;
 use crate::config::window::WindowConfig;
+#[cfg(target_os = "macos")]
+use crate::macos::hotkey::HotkeyConfig;
 
 /// Regex used for the default URL hint.
 #[rustfmt::skip]
@@ -152,6 +154,11 @@ impl UiConfig {
         &self.keyboard.bindings.0
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn global_hotkey(&self) -> &HotkeyConfig {
+        &self.keyboard.global_hotkey
+    }
+
     #[inline]
     pub fn mouse_bindings(&self) -> &[MouseBinding] {
         &self.mouse.bindings.0
@@ -175,6 +182,10 @@ struct Keyboard {
     /// Keybindings.
     #[serde(skip_serializing)]
     bindings: KeyBindings,
+
+    /// System-wide shortcut for showing or hiding the application.
+    #[cfg(target_os = "macos")]
+    global_hotkey: HotkeyConfig,
 }
 
 #[derive(SerdeReplace, Clone, Debug, PartialEq, Eq)]
