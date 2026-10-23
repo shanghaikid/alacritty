@@ -1,4 +1,7 @@
 # macOS additions to defaults.toml; fonts are included in Alacritty.app.
+[terminal]
+grapheme_clusters = true
+
 [window]
 decorations = "Transparent"
 option_as_alt = "Both"

@@ -2,6 +2,7 @@ use std::cmp::max;
 use std::error::Error;
 use std::mem;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 
 use log::{debug, warn};
 pub use regex_automata::hybrid::BuildError;
@@ -13,12 +14,24 @@ use regex_automata::{Anchored, Input, MatchKind};
 use crate::grid::{BidirectionalIterator, Dimensions, GridIterator, Indexed};
 use crate::index::{Boundary, Column, Direction, Line, Point, Side};
 use crate::term::Term;
-use crate::term::cell::{Cell, Flags};
+use crate::term::cell::{Cell, CellExtra, Flags};
 
 /// Used to match equal brackets, when performing a bracket-pair selection.
 const BRACKET_PAIRS: [(char, char); 4] = [('(', ')'), ('[', ']'), ('{', '}'), ('<', '>')];
 
 pub type Match = RangeInclusive<Point>;
+
+fn search_characters(
+    cell: &Cell,
+    graphemes: bool,
+) -> impl DoubleEndedIterator<Item = (usize, char)> + ExactSizeIterator + '_ {
+    let tail = if graphemes || cell.flags.contains(Flags::GRAPHEME) {
+        cell.zerowidth().unwrap_or_default()
+    } else {
+        &[]
+    };
+    (0..tail.len() + 1).map(move |index| (index, if index == 0 { cell.c } else { tail[index - 1] }))
+}
 
 /// Terminal regex search state.
 #[derive(Clone, Debug)]
@@ -35,7 +48,7 @@ pub struct RegexSearch {
 #[derive(Clone, Debug, Default)]
 struct RegexRangeCache {
     range: Option<(Point, Point, Line, usize)>,
-    cells: Vec<(char, Flags)>,
+    cells: Vec<(char, Flags, Option<Arc<CellExtra>>)>,
     matches: Vec<Match>,
 }
 
@@ -90,7 +103,7 @@ impl RegexSearch {
     /// Cached forward matches, stopping after matches starting on `stop_line`.
     ///
     /// Validate the exact characters and flags rather than relying on hashes or
-    /// UI invalidation events. Colors and combining marks do not affect search.
+    /// UI invalidation events. In grapheme mode the snapshot also includes tails.
     /// `end` can extend past `stop_line` to finish matches on wrapped lines.
     pub fn cached_matches<T>(
         &mut self,
@@ -107,10 +120,18 @@ impl RegexSearch {
         let cells = || {
             (first_line.0..=last_line.0)
                 .flat_map(|line| term.grid[Line(line)][Column(0)..Column(term.columns())].iter())
-                .map(|cell| (cell.c, cell.flags))
+                .map(|cell| {
+                    (
+                        cell.c,
+                        cell.flags,
+                        (term.config.grapheme_clusters || cell.flags.contains(Flags::GRAPHEME))
+                            .then(|| cell.extra.clone())
+                            .flatten(),
+                    )
+                })
         };
         let range = Some((start, end, stop_line, term.columns()));
-        if cache.range != range || !cache.cells.iter().copied().eq(cells()) {
+        if cache.range != range || !cache.cells.iter().cloned().eq(cells()) {
             cache.cells.clear();
             cache.cells.extend(cells());
             cache.matches.clear();
@@ -282,10 +303,11 @@ impl<T> Term<T> {
         end: Point,
     ) -> Option<Match> {
         // Find start and end of match.
-        let match_start = self.regex_search(start, end, &mut regex.left_fdfa)?;
-        let match_end = self.regex_search(match_start, start, &mut regex.left_rdfa)?;
+        let match_start = self.regex_search(start, end, None, &mut regex.left_fdfa)?;
+        let match_end =
+            self.regex_search(match_start.0, start, Some(match_start.1), &mut regex.left_rdfa)?;
 
-        Some(match_start..=match_end)
+        Some(match_start.0..=match_end.0)
     }
 
     /// Find the next regex match to the right of the origin point.
@@ -298,17 +320,24 @@ impl<T> Term<T> {
         end: Point,
     ) -> Option<Match> {
         // Find start and end of match.
-        let match_end = self.regex_search(start, end, &mut regex.right_fdfa)?;
-        let match_start = self.regex_search(match_end, start, &mut regex.right_rdfa)?;
+        let match_end = self.regex_search(start, end, None, &mut regex.right_fdfa)?;
+        let match_start =
+            self.regex_search(match_end.0, start, Some(match_end.1), &mut regex.right_rdfa)?;
 
-        Some(match_start..=match_end)
+        Some(match_start.0..=match_end.0)
     }
 
     /// Find the next regex match.
     ///
     /// This will always return the side of the first match which is farthest from the start point.
-    fn regex_search(&self, start: Point, end: Point, regex: &mut LazyDfa) -> Option<Point> {
-        match self.regex_search_internal(start, end, regex) {
+    fn regex_search(
+        &self,
+        start: Point,
+        end: Point,
+        scalar_start: Option<usize>,
+        regex: &mut LazyDfa,
+    ) -> Option<(Point, usize)> {
+        match self.regex_search_internal(start, end, scalar_start, regex) {
             Ok(regex_match) => regex_match,
             Err(err) => {
                 warn!("Regex exceeded complexity limit");
@@ -325,8 +354,9 @@ impl<T> Term<T> {
         &self,
         start: Point,
         end: Point,
+        scalar_start: Option<usize>,
         regex: &mut LazyDfa,
-    ) -> Result<Option<Point>, Box<dyn Error>> {
+    ) -> Result<Option<(Point, usize)>, Box<dyn Error>> {
         let topmost_line = self.topmost_line();
         let screen_lines = self.screen_lines() as i32;
         let last_column = self.last_column();
@@ -348,7 +378,20 @@ impl<T> Term<T> {
 
         let mut cell = iter.cell();
         self.skip_fullwidth(&mut iter, &mut cell, regex.direction);
-        let mut c = cell.c;
+        let mut characters = search_characters(cell, self.config.grapheme_clusters);
+        // Preserve the exact scalar boundary between the two DFA passes. A
+        // cell position alone cannot distinguish a match ending at the first
+        // scalar of a multi-scalar grapheme from one ending at its last scalar.
+        let initial_skip = match (regex.direction, scalar_start) {
+            (Direction::Right, Some(index)) => index,
+            (Direction::Left, Some(index)) => characters.len() - index - 1,
+            (_, None) => 0,
+        };
+        let (mut char_index, mut c) = match regex.direction {
+            Direction::Right => characters.nth(initial_skip).unwrap(),
+            Direction::Left => characters.nth_back(initial_skip).unwrap(),
+        };
+        let mut last_scalar = char_index;
         let mut last_wrapped = iter.cell().flags.contains(Flags::WRAPLINE);
 
         let mut point = iter.point();
@@ -384,7 +427,7 @@ impl<T> Term<T> {
                     // Matches require one additional BYTE of lookahead, so we check the match state
                     // for the first byte of every new character to determine if the last character
                     // was a match.
-                    regex_match = Some(last_point);
+                    regex_match = Some((last_point, last_scalar));
                 } else if state.is_dead() {
                     if consumed_bytes == 2 {
                         // Reset search if we found an empty match.
@@ -419,13 +462,27 @@ impl<T> Term<T> {
                 }
             }
 
+            // Every scalar in a cluster maps back to the same terminal cell.
+            // Consume the whole cluster before testing grid/end boundaries.
+            let next_character = match regex.direction {
+                Direction::Right => characters.next(),
+                Direction::Left => characters.next_back(),
+            };
+            if let Some((index, character)) = next_character {
+                last_point = point;
+                last_scalar = char_index;
+                char_index = index;
+                c = character;
+                continue;
+            }
+
             // Stop once we've reached the target point.
             if point == end || done {
                 // When reaching the end-of-input, we need to notify the parser that no look-ahead
                 // is possible and check for state changes.
                 state = regex.dfa.next_eoi_state(&mut regex.cache, state)?;
                 if state.is_match() {
-                    regex_match = Some(point);
+                    regex_match = Some((point, char_index));
                 } else if state.is_dead() && consumed_bytes == 1 {
                     // Ignore empty matches.
                     regex_match = None;
@@ -451,7 +508,12 @@ impl<T> Term<T> {
 
             self.skip_fullwidth(&mut iter, &mut cell, regex.direction);
 
-            c = cell.c;
+            characters = search_characters(cell, self.config.grapheme_clusters);
+            last_scalar = char_index;
+            (char_index, c) = match regex.direction {
+                Direction::Right => characters.next().unwrap(),
+                Direction::Left => characters.next_back().unwrap(),
+            };
             let wrapped = iter.cell().flags.contains(Flags::WRAPLINE);
 
             last_point = mem::replace(&mut point, iter.point());
@@ -464,7 +526,7 @@ impl<T> Term<T> {
                 // look-ahead is possible and check if the current state is still a match.
                 state = regex.dfa.next_eoi_state(&mut regex.cache, state)?;
                 if state.is_match() {
-                    regex_match = Some(last_point);
+                    regex_match = Some((last_point, last_scalar));
                 }
 
                 match regex_match {
@@ -485,7 +547,7 @@ impl<T> Term<T> {
     /// Advance a grid iterator over fullwidth characters.
     fn skip_fullwidth<'a>(
         &self,
-        iter: &'a mut GridIterator<'_, Cell>,
+        iter: &mut GridIterator<'a, Cell>,
         cell: &mut &'a Cell,
         direction: Direction,
     ) {

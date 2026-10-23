@@ -216,7 +216,16 @@ fn read_config(path: &Path) -> Result<UiConfig> {
 
 /// Apply built-in defaults once, after imports have been resolved.
 fn deserialize_ui_config(config_value: Value) -> Result<UiConfig> {
-    Ok(UiConfig::deserialize(serde_utils::merge(BUILTIN_CONFIG.clone(), config_value))?)
+    let mut defaults = BUILTIN_CONFIG.clone();
+    // A theme's explicit indexed palette replaces the embedded theme's palette.
+    // Generic config merging appends arrays, which otherwise makes our built-in
+    // indices 16/17 impossible to override (color lookup selects the first entry).
+    if config_value.get("colors").and_then(|colors| colors.get("indexed_colors")).is_some() {
+        if let Some(colors) = defaults.get_mut("colors").and_then(Value::as_table_mut) {
+            colors.remove("indexed_colors");
+        }
+    }
+    Ok(UiConfig::deserialize(serde_utils::merge(defaults, config_value))?)
 }
 
 /// Deserialize all configuration files as generic Value.
@@ -453,12 +462,32 @@ mod tests {
         #[cfg(target_os = "macos")]
         {
             assert_eq!(config.font.normal().family, "JetBrainsMono Nerd Font Mono");
+            assert!(config.term_options().grapheme_clusters);
             assert_eq!(value["window"]["decorations"].as_str(), Some("Transparent"));
             assert_eq!(value["window"]["option_as_alt"].as_str(), Some("Both"));
             assert!(config.global_hotkey().enabled);
             assert_eq!(value["keyboard"]["global_hotkey"]["key"].as_str(), Some("KeyL"));
             assert_eq!(value["keyboard"]["global_hotkey"]["mods"].as_str(), Some("Command|Shift"));
         }
+    }
+
+    #[test]
+    fn explicit_theme_palette_replaces_embedded_indexed_colors() {
+        use crate::display::color::{List, Rgb};
+
+        let config =
+            deserialize_ui_config(toml::from_str("[colors]\nindexed_colors = []").unwrap()).unwrap();
+        let palette = List::from(&config.colors);
+        assert_eq!(palette[16], Rgb::new(0, 0, 0));
+        assert_eq!(palette[17], Rgb::new(0, 0, 95));
+
+        let config = deserialize_ui_config(
+            toml::from_str("[[colors.indexed_colors]]\nindex = 16\ncolor = '#123456'").unwrap(),
+        )
+        .unwrap();
+        let palette = List::from(&config.colors);
+        assert_eq!(palette[16], Rgb::new(0x12, 0x34, 0x56));
+        assert_eq!(palette[17], Rgb::new(0, 0, 95));
     }
 
     #[test]

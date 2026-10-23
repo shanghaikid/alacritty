@@ -28,6 +28,7 @@ use crate::vte::ansi::{
 
 pub mod cell;
 pub mod color;
+mod grapheme;
 pub mod search;
 
 /// Minimum number of columns.
@@ -332,6 +333,9 @@ pub struct Term<T> {
 
     /// Config directly for the terminal.
     config: Config,
+
+    /// Reused input buffer for incremental Unicode grapheme segmentation.
+    grapheme_buffer: String,
 }
 
 /// Configuration options for the [`Term`].
@@ -356,6 +360,9 @@ pub struct Config {
 
     /// OSC52 support mode.
     pub osc52: Osc52,
+
+    /// Assemble extended grapheme clusters into single terminal cells.
+    pub grapheme_clusters: bool,
 }
 
 impl Default for Config {
@@ -367,6 +374,7 @@ impl Default for Config {
             vi_mode_cursor_style: Default::default(),
             kitty_keyboard: Default::default(),
             osc52: Default::default(),
+            grapheme_clusters: false,
         }
     }
 }
@@ -433,6 +441,7 @@ impl<T> Term<T> {
             event_proxy,
             damage,
             config,
+            grapheme_buffer: String::new(),
             grid,
             tabs,
             inactive_keyboard_mode_stack: Default::default(),
@@ -1108,6 +1117,10 @@ impl<T: EventListener> Handler for Term<T> {
             Some(width) => width,
             None => return,
         };
+
+        if self.config.grapheme_clusters && !c.is_ascii() && self.join_grapheme(c) {
+            return;
+        }
 
         // Handle zero-width characters.
         if width == 0 {

@@ -10,6 +10,8 @@ use crate::gl::types::*;
 
 mod atlas;
 mod builtin_font;
+#[cfg(target_os = "macos")]
+mod cluster;
 mod gles2;
 mod glsl3;
 pub mod glyph_cache;
@@ -154,6 +156,18 @@ pub trait TextRenderApi<T: TextRenderBatch>: LoadGlyph {
 
         let mut glyph_key =
             GlyphKey { font_key, size: glyph_cache.font_size, character: cell.character };
+
+        // Emoji sequences must be shaped together (ZWJ, modifiers, flags, VS16).
+        // Ordinary cells retain the scalar cache and its allocation-free path.
+        #[cfg(target_os = "macos")]
+        if !hidden && cell.flags.contains(Flags::GRAPHEME) {
+            if let Some(extra) = cell.extra.as_ref() {
+                if let Some(glyph) = glyph_cache.get_cluster(glyph_key, extra.zerowidth(), self) {
+                    self.add_render_item(&cell, &glyph, size_info);
+                    return;
+                }
+            }
+        }
 
         // Add cell to batch.
         let glyph = glyph_cache.get(glyph_key, self, true);

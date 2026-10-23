@@ -270,6 +270,13 @@ macOS:     { family = _"Menlo"_,     style = _"Regular"_ }
 
 	Default: _11.25_
 
+*line_height* = _<number>_
+
+	Override the font's natural line height in points. It scales with font zoom
+	and display scale, and also applies to built-in box drawing characters.
+	Unset by default. For example, *size = 12.0* and *line_height = 14.0* use
+	a 14-point row at the configured font size. *offset.y* is applied afterward.
+
 *offset* = { x = _<integer>_, y = _<integer>_ }
 
 	Offset is the extra space around each character. _y_ can be thought of as
@@ -614,6 +621,15 @@ Windows: _"powershell"_
 
 	Example:
 		*shell* = { program = _"/bin/zsh"_, args = [_"-l"_] }
+
+*grapheme_clusters* = _true_ | _false_ # macOS only
+
+	Assemble extended Unicode graphemes, including emoji ZWJ sequences, flags,
+	skin-tone modifiers and presentation selectors, into terminal cells. Emoji
+	clusters are shaped with CoreText. Selection/copy preserves every scalar;
+	searches can match an entire cluster or a component of it.
+
+	Default: _true_ in this fork's macOS application; _false_ in the terminal library.
 
 *osc52* = _"Disabled"_ | _"OnlyCopy"_ | _"OnlyPaste"_ | _"CopyPaste"_
 

@@ -12,6 +12,8 @@ pub struct Terminal {
     pub osc52: SerdeOsc52,
     /// Path to a shell program to run on startup.
     pub shell: Option<Program>,
+    /// Assemble Unicode graphemes; requires a cluster-capable renderer.
+    pub grapheme_clusters: bool,
 }
 
 #[derive(SerdeReplace, Serialize, Default, Copy, Clone, Debug, PartialEq)]

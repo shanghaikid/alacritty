@@ -40,6 +40,9 @@ pub struct Font {
     /// Font size in points.
     size: Size,
 
+    /// Explicit line height in points, scaled together with the font size.
+    line_height: Option<Size>,
+
     /// Whether to use the built-in font for box drawing characters.
     pub builtin_box_drawing: bool,
 }
@@ -47,12 +50,26 @@ pub struct Font {
 impl Font {
     /// Get a font clone with a size modification.
     pub fn with_size(self, size: FontSize) -> Font {
-        Font { size: Size(size), ..self }
+        let scale = size.as_pt() / self.size.0.as_pt();
+        let line_height = self.line_height.map(|height| Size(height.0.scale(scale)));
+        Font { size: Size(size), line_height, ..self }
     }
 
     #[inline]
     pub fn size(&self) -> FontSize {
         self.size.0
+    }
+
+    /// Explicit line height in rasterizer units, if configured.
+    pub fn line_height(&self) -> Option<f64> {
+        self.line_height.as_ref().map(|height| {
+            // CoreText uses macOS points directly; other rasterizers use 96 DPI.
+            #[cfg(target_os = "macos")]
+            let height = height.0.as_pt();
+            #[cfg(not(target_os = "macos"))]
+            let height = height.0.as_px();
+            f64::from(height)
+        })
     }
 
     /// Get normal font description.
@@ -88,6 +105,7 @@ impl Default for Font {
             normal: Default::default(),
             bold: Default::default(),
             size: Default::default(),
+            line_height: None,
         }
     }
 }
@@ -170,5 +188,28 @@ impl Serialize for Size {
         S: Serializer,
     {
         serializer.serialize_f32(self.0.as_pt())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_line_height_tracks_dpi_and_zoom() {
+        let font: Font = toml::from_str("size = 12.0\nline_height = 14.0").unwrap();
+        let height = font.line_height().unwrap();
+        let retina = font.clone().with_size(FontSize::new(24.));
+        assert_eq!(retina.line_height(), Some(height * 2.));
+        let zoomed = font.with_size(FontSize::new(18.));
+        assert_eq!(zoomed.line_height(), Some(height * 1.5));
+        let restored = retina.with_size(FontSize::new(12.));
+        assert_eq!(restored.line_height(), Some(height));
+    }
+
+    #[test]
+    fn natural_line_height_remains_the_default() {
+        let font = Font::default().with_size(FontSize::new(24.));
+        assert_eq!(font.line_height(), None);
     }
 }

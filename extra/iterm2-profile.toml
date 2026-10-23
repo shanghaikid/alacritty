@@ -1,0 +1,88 @@
+# Local iTerm2 Default profile, exported 2026-10-23.
+# Calibrated/P3 colors converted by macOS ColorSync to sRGB.
+# Import after the shared dotfiles configuration.
+
+[window]
+# Transparent macOS title bars overlay the content; reserve button/title space.
+padding = { x = 5, y = 24 }
+dynamic_padding = false
+opacity = 1.0
+blur = false
+
+[font]
+size = 12.0
+# iTerm2: ceil(ceil(ascent - descent + leading) * 0.92) = 14 points.
+line_height = 14.0
+normal = { family = "SF Mono", style = "Regular" }
+bold = { family = "SF Mono", style = "Bold" }
+italic = { family = "SF Mono", style = "Regular Italic" }
+bold_italic = { family = "SF Mono", style = "Bold Italic" }
+offset = { x = 0, y = 0 }
+glyph_offset = { x = 0, y = 0 }
+
+[colors]
+draw_bold_text_with_bright_colors = true
+indexed_colors = []
+
+[colors.primary]
+background = "#252525"
+foreground = "#e3f1e4"
+bright_foreground = "#ffffff"
+dim_foreground = "#848b84"
+
+[colors.cursor]
+text = "#000000"
+cursor = "#e9c9f2"
+
+[colors.vi_mode_cursor]
+text = "#252525"
+cursor = "#e9c9f2"
+
+[colors.footer_bar]
+foreground = "#e3f1e4"
+background = "#606060"
+
+[colors.hints.start]
+foreground = "#252525"
+background = "#eebb6e"
+
+[colors.hints.end]
+foreground = "#252525"
+background = "#c8b8a9"
+
+[colors.selection]
+text = "#ffffff"
+background = "#606060"
+
+[colors.normal]
+black = "#4e4537"
+red = "#d8726f"
+green = "#97bb92"
+yellow = "#eebb6e"
+blue = "#76a8f1"
+magenta = "#e5c499"
+cyan = "#bdcfe5"
+white = "#c8b8a9"
+
+[colors.bright]
+black = "#685656"
+red = "#d76b42"
+green = "#99b52c"
+yellow = "#ffb670"
+blue = "#97d7ef"
+magenta = "#aa7900"
+cyan = "#bdcfe5"
+white = "#e4d5c7"
+
+[colors.search.matches]
+foreground = "#000000"
+background = "#fffb00"
+
+[colors.search.focused_match]
+foreground = "#000000"
+background = "#fffb00"
+
+[cursor]
+style = { shape = "Beam", blinking = "On" }
+blink_interval = 500
+blink_timeout = 0

@@ -30,6 +30,7 @@ bitflags! {
         const UNDERCURL                 = 0b0001_0000_0000_0000;
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
+        const GRAPHEME                  = 0b1000_0000_0000_0000;
         const ALL_UNDERLINES            = Self::UNDERLINE.bits() | Self::DOUBLE_UNDERLINE.bits()
                                         | Self::UNDERCURL.bits() | Self::DOTTED_UNDERLINE.bits()
                                         | Self::DASHED_UNDERLINE.bits();
@@ -129,7 +130,7 @@ pub struct CellExtra {
 }
 
 impl CellExtra {
-    /// Combining characters, borrowed from an immutable cell snapshot.
+    /// Combining characters or grapheme-tail scalars from an immutable snapshot.
     #[inline]
     pub fn zerowidth(&self) -> &[char] {
         &self.zerowidth
@@ -167,7 +168,7 @@ impl Default for Cell {
 }
 
 impl Cell {
-    /// Zerowidth characters stored in this cell.
+    /// Additional scalars stored in this cell (combining marks or a grapheme tail).
     #[inline]
     pub fn zerowidth(&self) -> Option<&[char]> {
         self.extra.as_ref().map(|extra| extra.zerowidth.as_slice())
@@ -183,7 +184,7 @@ impl Cell {
     /// Remove all wide char data from a cell.
     #[inline(never)]
     pub fn clear_wide(&mut self) {
-        self.flags.remove(Flags::WIDE_CHAR);
+        self.flags.remove(Flags::WIDE_CHAR | Flags::GRAPHEME);
         if let Some(extra) = self.extra.as_mut() {
             Arc::make_mut(extra).zerowidth = Vec::new();
         }

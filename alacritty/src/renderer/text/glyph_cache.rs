@@ -44,6 +44,8 @@ pub struct Glyph {
 /// Currently only keyed by `char`, and thus not possible to hold different
 /// representations of the same code point.
 pub struct GlyphCache {
+    #[cfg(target_os = "macos")]
+    clusters: super::cluster::ClusterCache,
     /// Cache of buffered glyphs.
     cache: HashMap<GlyphKey, Glyph, RandomState>,
 
@@ -84,6 +86,8 @@ impl GlyphCache {
 
         let metrics = GlyphCache::load_font_metrics(&mut rasterizer, font, regular)?;
         Ok(Self {
+            #[cfg(target_os = "macos")]
+            clusters: super::cluster::ClusterCache::new(font, [regular, bold, italic, bold_italic]),
             cache: Default::default(),
             rasterizer,
             font_size: font.size(),
@@ -110,6 +114,9 @@ impl GlyphCache {
         rasterizer.get_glyph(GlyphKey { font_key: key, character: 'm', size: font.size() })?;
 
         let mut metrics = rasterizer.metrics(key, font.size())?;
+        if let Some(line_height) = font.line_height() {
+            metrics.line_height = line_height;
+        }
         metrics.strikeout_position += font.glyph_offset.y as f32;
         Ok(metrics)
     }
@@ -272,6 +279,8 @@ impl GlyphCache {
     pub fn reset_glyph_cache<L: LoadGlyph>(&mut self, loader: &mut L) {
         loader.clear();
         self.cache = Default::default();
+        #[cfg(target_os = "macos")]
+        self.clusters.clear();
 
         self.load_common_glyphs(loader);
     }
@@ -300,12 +309,37 @@ impl GlyphCache {
         self.bold_italic_key = bold_italic;
         self.metrics = metrics;
         self.builtin_box_drawing = font.builtin_box_drawing;
+        #[cfg(target_os = "macos")]
+        {
+            self.clusters =
+                super::cluster::ClusterCache::new(font, [regular, bold, italic, bold_italic]);
+        }
 
         Ok(())
     }
 
     pub fn font_metrics(&self) -> crossfont::Metrics {
         self.metrics
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn get_cluster<L: LoadGlyph + ?Sized>(
+        &mut self,
+        key: GlyphKey,
+        tail: &[char],
+        loader: &mut L,
+    ) -> Option<Glyph> {
+        if !super::cluster::needs_shaping(tail) {
+            return None;
+        }
+        self.clusters.prepare(key.character, tail);
+        if let Some(glyph) = self.clusters.get(key.font_key) {
+            return Some(glyph);
+        }
+        let rasterized = self.clusters.rasterize(key.font_key)?;
+        let glyph = self.load_glyph(loader, rasterized);
+        self.clusters.insert(key.font_key, glyph);
+        Some(glyph)
     }
 
     /// Prefetch glyphs that are almost guaranteed to be loaded anyways.
