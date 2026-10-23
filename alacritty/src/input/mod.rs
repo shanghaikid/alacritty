@@ -70,6 +70,11 @@ const MAX_TAP_DISTANCE: f64 = 20.;
 /// Threshold used for double_click/triple_click.
 const CLICK_THRESHOLD: Duration = Duration::from_millis(400);
 
+/// Modifiers which keep mouse clicks and selection in Alacritty instead of the PTY.
+pub(crate) fn mouse_reporting_override(modifiers: ModifiersState) -> bool {
+    modifiers.shift_key() || (cfg!(target_os = "macos") && modifiers.super_key())
+}
+
 /// Processes input from winit.
 ///
 /// An escape sequence may be emitted in case specific keys or key combinations
@@ -498,10 +503,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         self.ctx.mouse_mut().block_hint_launcher = true;
 
         if (lmb_pressed || rmb_pressed)
-            && (self.ctx.modifiers().state().shift_key() || !self.ctx.mouse_mode())
+            && (mouse_reporting_override(self.ctx.modifiers().state()) || !self.ctx.mouse_mode())
         {
             self.ctx.update_selection(point, cell_side);
         } else if cell_changed
+            && !mouse_reporting_override(self.ctx.modifiers().state())
             && self.ctx.terminal().mode().intersects(TermMode::MOUSE_MOTION | TermMode::MOUSE_DRAG)
         {
             if lmb_pressed {
@@ -616,7 +622,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
     fn on_mouse_press(&mut self, button: MouseButton) {
         // Handle mouse mode.
-        if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
             self.ctx.mouse_mut().click_state = ClickState::None;
 
             let code = match button {
@@ -694,7 +700,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
-        if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
             let code = match button {
                 MouseButton::Left => 0,
                 MouseButton::Middle => 1,
@@ -1105,7 +1111,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             mouse_state
         } else if self.ctx.display().highlighted_hint.as_ref().is_some_and(hint_highlighted) {
             CursorIcon::Pointer
-        } else if !self.ctx.modifiers().state().shift_key() && self.ctx.mouse_mode() {
+        } else if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
             CursorIcon::Default
         } else {
             CursorIcon::Text
@@ -1220,7 +1226,7 @@ mod tests {
         }
 
         fn mouse_mode(&self) -> bool {
-            false
+            self.terminal.mode().intersects(TermMode::MOUSE_MODE)
         }
 
         #[inline]
@@ -1277,6 +1283,47 @@ mod tests {
 
         fn semantic_word(&self, _point: Point) -> String {
             unimplemented!();
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn command_click_bypasses_application_mouse_reporting() {
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::SUPER,
+            ModifiersState::SHIFT,
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+        ] {
+            let cfg = UiConfig::default();
+            let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
+            let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+            let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+            parser.advance(&mut terminal, b"\x1b[?1000h");
+            let mut mouse = Mouse { block_hint_launcher: true, ..Mouse::default() };
+            let mut clipboard = Clipboard::new_nop();
+            let mut message_buffer = MessageBuffer::default();
+            let mut inline_search_state = InlineSearchState::default();
+            let context = ActionContext {
+                terminal: &mut terminal,
+                mouse: &mut mouse,
+                size_info: &size,
+                clipboard: &mut clipboard,
+                modifiers: modifiers.into(),
+                message_buffer: &mut message_buffer,
+                inline_search_state: &mut inline_search_state,
+                config: &cfg,
+            };
+            let mut processor = Processor::new(context);
+            processor.on_mouse_press(MouseButton::Left);
+            if modifiers == ModifiersState::SUPER || modifiers == ModifiersState::SHIFT {
+                assert_eq!(processor.ctx.mouse.click_state, ClickState::Click);
+                assert!(!processor.ctx.mouse.block_hint_launcher);
+            } else {
+                assert_eq!(processor.ctx.mouse.click_state, ClickState::None);
+                assert!(processor.ctx.mouse.block_hint_launcher);
+            }
         }
     }
 

@@ -15,6 +15,7 @@ use alacritty_terminal::term::{Term, TermMode};
 
 use crate::config::UiConfig;
 use crate::config::ui_config::{Hint, HintAction};
+use crate::input::mouse_reporting_override;
 
 /// Maximum number of linewraps followed outside of the viewport during search highlighting.
 pub const MAX_SEARCH_LINES: usize = 100;
@@ -420,7 +421,7 @@ pub fn highlighted_at<T>(
         let highlight = hint.mouse.is_some_and(|mouse| {
             mouse.enabled
                 && mouse_mods.contains(mouse.mods.0)
-                && (!mouse_mode || mouse_mods.contains(ModifiersState::SHIFT))
+                && (!mouse_mode || mouse_reporting_override(mouse_mods))
         });
         if !highlight {
             return None;
@@ -619,6 +620,66 @@ mod tests {
     use alacritty_terminal::vte::ansi::{Handler, Processor};
 
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn local_path_hints_and_url_precedence() {
+        use crate::config::ui_config::HintInternalAction;
+
+        let config = UiConfig::default();
+        for path in [
+            ".codex-artifacts/zilliz-cloud-architecture/index.html",
+            "./output/index.html",
+            "../output/index.html",
+            "docs/index.html",
+            "~/workspace/index.html",
+            "/Users/test/index.html",
+            ".codex-artifacts/架构图/index.html",
+        ] {
+            let term = mock_term(&format!("打开 ({path})。"));
+            let hint = highlighted_at(
+                &term,
+                &config,
+                Point::new(Line(0), Column(6)),
+                ModifiersState::empty(),
+            )
+            .unwrap();
+            assert_eq!(hint.action(), &HintAction::Action(HintInternalAction::OpenPath));
+            assert_eq!(hint.text(&term).as_deref(), Some(path));
+        }
+
+        for url in ["https://example.com/index.html", "file:///Users/test/index.html"] {
+            let term = mock_term(url);
+            let hint = highlighted_at(
+                &term,
+                &config,
+                Point::new(Line(0), Column(12)),
+                ModifiersState::empty(),
+            )
+            .unwrap();
+            assert!(matches!(hint.action(), HintAction::Command(_)));
+            assert_eq!(hint.text(&term).as_deref(), Some(url));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn wrapped_local_path_hints_and_mouse_reporting() {
+        let mut term = Term::new(Config::default(), &TermSize::new(24, 8), VoidListener);
+        let mut parser: Processor = Processor::new();
+        let path = ".codex-artifacts/zilliz-cloud-architecture/index.html";
+        parser.advance(&mut term, format!("[{path}]\x1b[?1000h").as_bytes());
+        let point = Point::new(Line(1), Column(5));
+        let config = UiConfig::default();
+        assert!(highlighted_at(&term, &config, point, ModifiersState::empty()).is_none());
+        for modifiers in [ModifiersState::SHIFT, ModifiersState::SUPER] {
+            let hint = highlighted_at(&term, &config, point, modifiers).unwrap();
+            assert_eq!(hint.text(&term).as_deref(), Some(path));
+        }
+        for modifiers in [ModifiersState::CONTROL, ModifiersState::ALT] {
+            assert!(highlighted_at(&term, &config, point, modifiers).is_none());
+        }
+    }
 
     #[test]
     fn cached_regex_matches_viewport_scan() {

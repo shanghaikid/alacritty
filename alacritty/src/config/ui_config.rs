@@ -42,6 +42,10 @@ use crate::macos::hotkey::HotkeyConfig;
 const URL_REGEX: &str = "(ipfs:|ipns:|magnet:|mailto:|gemini://|gopher://|https://|http://|news:|file:|git://|ssh:|ftp://)\
                          [^\u{0000}-\u{001F}\u{007F}-\u{009F}<>\"\\s{-}\\^⟨⟩`\\\\]+";
 
+/// Unquoted local paths, including hidden directories in generated artifact links.
+#[cfg(target_os = "macos")]
+const PATH_REGEX: &str = r#"(~?/|\.{1,2}/|[\p{L}\p{N}_.-]+/)[^\x00-\x20\x7f-\x9f\s<>"'`(){}\[\]:;!?|,，。；！？：（）【】\\]+"#;
+
 #[derive(ConfigDeserialize, Serialize, Default, Clone, Debug, PartialEq)]
 pub struct UiConfig {
     /// Miscellaneous configuration options.
@@ -274,7 +278,8 @@ impl Default for Hints {
             args: vec!["/c".to_string(), "start".to_string(), "".to_string()],
         });
 
-        Self {
+        #[allow(unused_mut)]
+        let mut hints = Self {
             enabled: vec![Rc::new(Hint {
                 content,
                 action,
@@ -292,7 +297,24 @@ impl Default for Hints {
                 }),
             })],
             alphabet: Default::default(),
-        }
+        };
+
+        #[cfg(target_os = "macos")]
+        hints.enabled.push(Rc::new(Hint {
+            content: HintContent::new(
+                Some(LazyRegex(Rc::new(RefCell::new(LazyRegexVariant::Pattern(
+                    PATH_REGEX.into(),
+                ))))),
+                false,
+            ),
+            action: HintAction::Action(HintInternalAction::OpenPath),
+            persist: false,
+            post_processing: true,
+            mouse: Some(HintMouse { enabled: true, mods: Default::default() }),
+            binding: None,
+        }));
+
+        hints
     }
 }
 
@@ -338,6 +360,9 @@ impl<'de> Deserialize<'de> for HintsAlphabet {
 /// Built-in actions for hint mode.
 #[derive(ConfigDeserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub enum HintInternalAction {
+    /// Open an existing local path relative to the foreground process or tmux pane.
+    #[cfg(target_os = "macos")]
+    OpenPath,
     /// Copy the text to the clipboard.
     Copy,
     /// Write the text to the PTY/search.

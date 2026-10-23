@@ -1354,6 +1354,12 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         };
 
         match &hint.action() {
+            #[cfg(target_os = "macos")]
+            HintAction::Action(HintInternalAction::OpenPath) => {
+                let pid = unsafe { libc::tcgetpgrp(self.master_fd) };
+                let pid = if pid > 0 { pid } else { self.shell_pid as i32 };
+                crate::macos::path_hint::open(text.into_owned(), pid);
+            },
             // Launch an external program.
             HintAction::Command(command) => {
                 let mut args = command.args().to_vec();

@@ -58,6 +58,28 @@ shortcut only after its replacement registers successfully. If another app owns
 the new combination, the previous shortcut remains active. CLI overrides are
 supported; per-window IPC overrides do not change application-wide registration.
 
+## Local file links on macOS
+
+The default mouse hints also recognize local paths containing a slash, including
+`.codex-artifacts/project/index.html`, `./`, `../`, `~/`, and absolute paths.
+Click to open an existing file or directory with its default macOS application.
+When tmux or another program captures the mouse, hold **Cmd** or **Shift** while
+clicking. Both modifiers keep clicks and selection drags in Alacritty.
+URL and OSC 8 hyperlinks retain priority over plain-text file paths.
+
+Relative paths use the foreground process's current directory. In tmux they use
+the active pane of the client attached to that Alacritty window, including clients
+started with `-L` or `-S`. Select the relevant pane before opening its links.
+Paths in old scrollback are resolved against the current directory at click time.
+Plain-text recognition excludes whitespace and surrounding Markdown punctuation;
+paths containing spaces should be emitted as `file://` OSC 8 links instead.
+An explicit `hints.enabled` configuration replaces these built-in hints.
+
+The regression suite covers path recognition and resolution. To also check real
+tmux clients, run `extra/path-hint-acceptance.py <alacritty-test-binary> <tmux>`
+after `cargo test`, before cleaning the test target directory. It creates and
+removes isolated tmux servers; it does not attach to existing user sessions.
+
 ## Configuration precedence
 
 The order is built-in settings, imported configuration files, the main user
