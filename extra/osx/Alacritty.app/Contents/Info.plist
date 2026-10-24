@@ -24,6 +24,8 @@
   <string>1</string>
   <key>CFBundleIconFile</key>
   <string>alacritty.icns</string>
+  <key>CFBundleIconName</key>
+  <string>iTerm2 App Icon for Release</string>
   <key>ATSApplicationFontsPath</key>
   <string>fonts</string>
   <key>NSHighResolutionCapable</key>
