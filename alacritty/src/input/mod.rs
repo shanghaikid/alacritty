@@ -330,7 +330,8 @@ impl<T: EventListener> Execute<T> for Action {
             Action::CopySelection => ctx.copy_selection(ClipboardType::Selection),
             Action::ClearSelection => ctx.clear_selection(),
             Action::Paste => {
-                let text = ctx.clipboard_mut().load(ClipboardType::Clipboard);
+                let allow_images = !ctx.search_active() && !ctx.inline_search_state().char_pending;
+                let text = ctx.clipboard_mut().load_for_paste(allow_images);
                 ctx.paste(&text, true);
             },
             Action::PasteSelection => {

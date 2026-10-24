@@ -55,6 +55,25 @@ impl Default for Clipboard {
 }
 
 impl Clipboard {
+    /// Load an explicit paste, allowing image files only outside terminal search.
+    ///
+    /// Keep `load` text-only: OSC 52 queries must never export clipboard images.
+    pub fn load_for_paste(&mut self, allow_images: bool) -> String {
+        let text = self.load(ClipboardType::Clipboard);
+        if !text.is_empty() || !allow_images {
+            return text;
+        }
+
+        #[cfg(target_os = "macos")]
+        match crate::macos::clipboard::image_path() {
+            Ok(Some(path)) => return path,
+            Ok(None) => (),
+            Err(err) => warn!("Unable to paste clipboard image: {err}"),
+        }
+
+        text
+    }
+
     pub fn store(&mut self, ty: ClipboardType, text: impl Into<String>) {
         let clipboard = match (ty, &mut self.selection) {
             (ClipboardType::Selection, Some(provider)) => provider,
@@ -80,5 +99,43 @@ impl Clipboard {
             },
             Ok(text) => text,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use super::*;
+
+    struct TextClipboard(String);
+
+    impl ClipboardProvider for TextClipboard {
+        fn get_contents(&mut self) -> Result<String, Box<dyn Error + Send + Sync>> {
+            Ok(self.0.clone())
+        }
+
+        fn set_contents(&mut self, text: String) -> Result<(), Box<dyn Error + Send + Sync>> {
+            self.0 = text;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn text_keeps_priority_for_explicit_paste() {
+        let text = "echo 'hello'\n你好";
+        let mut clipboard =
+            Clipboard { clipboard: Box::new(TextClipboard(text.to_owned())), selection: None };
+        assert_eq!(clipboard.load_for_paste(true), text);
+        assert_eq!(clipboard.load_for_paste(false), text);
+        assert_eq!(clipboard.load(ClipboardType::Clipboard), text);
+    }
+
+    #[test]
+    fn text_only_paste_accepts_empty_clipboard() {
+        let mut clipboard =
+            Clipboard { clipboard: Box::new(TextClipboard(String::new())), selection: None };
+        assert_eq!(clipboard.load_for_paste(false), "");
+        assert_eq!(clipboard.load(ClipboardType::Clipboard), "");
     }
 }

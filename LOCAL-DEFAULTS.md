@@ -30,6 +30,30 @@ file or a separate font installation.
 
 The Baidu Pinyin Shift/Enter fix remains pinned to the same patched winit.
 
+## Pasting images on macOS
+
+Copy a screenshot with Ctrl+Shift+Cmd+4 (or copy an image in Preview), then press
+Cmd+V in Alacritty. When the clipboard has no text, the Paste action exports PNG,
+TIFF, or JPEG image data as a PNG file and pastes its absolute path plus a space.
+CLI tools that accept local image paths can then read the image. Ordinary text
+paste keeps priority, and terminal search and OSC 52 clipboard queries stay
+text-only. Custom bindings to `Paste` use the same behavior.
+
+Files are named `alacritty-clipboard-*.png` in the macOS temporary directory
+(`$TMPDIR`), with owner-only permissions. They remain after Alacritty exits so
+tools can read them later; macOS manages temporary-file cleanup, and you can
+delete these files when no longer needed. Paths with shell metacharacters are
+quoted. The clipboard itself is unchanged.
+
+This passes a local file path, not an upload: local tmux panes can access it,
+while SSH sessions and containers need the file transferred or mounted first.
+The receiving CLI must support image paths; Alacritty does not attach images
+to arbitrary programs or render an inline image preview.
+
+Native format-conversion tests use isolated pasteboards and require a logged-in
+macOS desktop session: `cargo test -p alacritty macos::clipboard -- --ignored`.
+They do not modify the system clipboard.
+
 ## Native macOS global hotkey
 
 Alacritty registers Cmd+Shift+L with macOS while it is running. Press it in

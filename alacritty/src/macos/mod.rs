@@ -1,6 +1,7 @@
 use objc2::runtime::AnyObject;
 use objc2_foundation::{NSDictionary, NSString, NSUserDefaults, ns_string};
 
+pub mod clipboard;
 pub mod hotkey;
 pub mod locale;
 pub mod path_hint;
