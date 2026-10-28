@@ -67,9 +67,10 @@ def exercise(keys, line_numbers):
             original = snapshot()
             assert original['pane_in_mode'] and original['selection_present'], original
             assert not original['selection_active'], original
-            tmux('send-keys', '-t', 'test', '-N', '30', '-X', 'scroll-down')
-            tick()
+            os.write(master, b'\x1b[<69;20;6M' * 30)
+            tick(.3)
             before = snapshot()
+            assert before['scroll_position'] == original['scroll_position'] - 30, (original, before)
             assert before['selection_start_y'] == original['selection_start_y']
             assert before['selection_end_y'] == original['selection_end_y']
             mouse(4, 22, 7)
@@ -81,7 +82,13 @@ def exercise(keys, line_numbers):
             assert after['selection_end_x'] == 21 - (11 - original['selection_start_x']), (original, after)
             assert after['selection_end_y'] == before['history_size'] - before['scroll_position'] + 6, (before, after)
             assert not after['selection_active'], after
-            assert 'L020 ' in clipboard.read_text(), clipboard.read_text()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if clipboard.exists() and 'L020 ' in clipboard.read_text():
+                    break
+                tick(.05)
+            else:
+                raise AssertionError('Clipboard job did not complete: ' + tmux('show-messages'))
             # Repeated Shift-click changes the endpoint without losing the original anchor.
             mouse(4, 18, 5)
             mouse(4, 18, 5, True)
@@ -97,9 +104,20 @@ def exercise(keys, line_numbers):
             rapid = snapshot()
             assert rapid['selection_start_y'] == original['selection_start_y'], rapid
             assert rapid['selection_end_y'] == before['history_size'] - before['scroll_position'] + 7, rapid
+            copied_lines = len(clipboard.read_text().splitlines())
+            # Double/triple clicks can start in the live pane, outside copy mode.
+            tmux('send-keys', '-t', 'test', '-X', 'cancel')
+            tick(.4)
+            for _ in range(3):
+                os.write(master, b'\x1b[<0;16;4M\x1b[<0;16;4m')
+                tick(.05)
+            tick(.4)
+            word_or_line = snapshot()
+            assert word_or_line['pane_in_mode'] and word_or_line['selection_present'], word_or_line
+            assert not word_or_line['selection_active'], word_or_line
             print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
-                              'repeated_shift_click': True, 'copied_lines': len(clipboard.read_text().splitlines())}))
+                              'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True}))
         finally:
             subprocess.run(command + ['kill-server'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
