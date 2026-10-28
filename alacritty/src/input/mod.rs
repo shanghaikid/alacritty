@@ -694,6 +694,26 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         let side = self.ctx.mouse().cell_side;
         let control = self.ctx.modifiers().state().control_key();
 
+        // Shift-click moves only the active endpoint, including when the first
+        // click created an empty anchor. Keep the original selection type and
+        // grid coordinates so this also works after scrolling through history.
+        if self.ctx.modifiers().state().shift_key() && self.ctx.terminal().selection.is_some() {
+            self.ctx.mouse_mut().block_hint_launcher = true;
+            self.ctx.mouse_mut().click_state = ClickState::Click;
+            self.ctx.update_selection(point, side);
+        } else {
+            self.start_click_selection(point, side, control);
+        }
+
+        // Move vi mode cursor to mouse click position.
+        if self.ctx.terminal().mode().contains(TermMode::VI) && !self.ctx.search_active() {
+            self.ctx.terminal_mut().vi_mode_cursor.point = point;
+            self.ctx.mark_dirty();
+        }
+    }
+
+    /// Start a new selection for an unmodified click or a click without an anchor.
+    fn start_click_selection(&mut self, point: Point, side: Side, control: bool) {
         match self.ctx.mouse().click_state {
             ClickState::Click => {
                 // Don't launch URLs if this click cleared the selection.
@@ -718,12 +738,6 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             },
             _ => (),
         };
-
-        // Move vi mode cursor to mouse click position.
-        if self.ctx.terminal().mode().contains(TermMode::VI) && !self.ctx.search_active() {
-            self.ctx.terminal_mut().vi_mode_cursor.point = point;
-            self.ctx.mark_dirty();
-        }
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
@@ -1245,7 +1259,25 @@ mod tests {
         }
 
         fn selection_is_empty(&self) -> bool {
-            true
+            self.terminal
+                .selection
+                .as_ref()
+                .is_none_or(alacritty_terminal::selection::Selection::is_empty)
+        }
+
+        fn clear_selection(&mut self) {
+            self.terminal.selection = None;
+        }
+
+        fn start_selection(&mut self, ty: SelectionType, point: Point, side: Side) {
+            self.terminal.selection =
+                Some(alacritty_terminal::selection::Selection::new(ty, point, side));
+        }
+
+        fn update_selection(&mut self, point: Point, side: Side) {
+            if let Some(selection) = &mut self.terminal.selection {
+                selection.update(point, side);
+            }
         }
 
         fn scroll(&mut self, scroll: Scroll) {
@@ -1352,6 +1384,122 @@ mod tests {
                 assert!(processor.ctx.mouse.block_hint_launcher);
             }
         }
+    }
+
+    #[test]
+    fn shift_click_extends_selection_across_scrollback_without_resetting_anchor() {
+        use alacritty_terminal::index::Line;
+        use alacritty_terminal::selection::Selection;
+
+        for mouse_reporting in [false, true] {
+            for ty in [
+                SelectionType::Simple,
+                SelectionType::Block,
+                SelectionType::Semantic,
+                SelectionType::Lines,
+            ] {
+                let cfg = UiConfig::default();
+                let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
+                let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+                let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+                parser.advance(&mut terminal, "history line\r\n".repeat(100).as_bytes());
+                if mouse_reporting {
+                    parser.advance(&mut terminal, b"\x1b[?1000h\x1b[?1006h");
+                }
+                terminal.scroll_display(Scroll::Delta(80));
+                let anchor = Point::new(Line(-80), Column(1));
+                terminal.selection = Some(Selection::new(ty, anchor, Side::Left));
+                let mut mouse = Mouse {
+                    x: 22,
+                    y: 37,
+                    cell_side: Side::Right,
+                    click_state: ClickState::DoubleClick,
+                    last_click_button: MouseButton::Left,
+                    ..Mouse::default()
+                };
+                let mut clipboard = Clipboard::new_nop();
+                let mut message_buffer = MessageBuffer::default();
+                let mut inline_search_state = InlineSearchState::default();
+                let mut processor = Processor::new(ActionContext {
+                    terminal: &mut terminal,
+                    size_info: &size,
+                    mouse: &mut mouse,
+                    clipboard: &mut clipboard,
+                    message_buffer: &mut message_buffer,
+                    modifiers: ModifiersState::SHIFT.into(),
+                    config: &cfg,
+                    inline_search_state: &mut inline_search_state,
+                });
+
+                // The first click can be only an empty anchor, or an existing dragged range.
+                for dragged in [false, true] {
+                    let mut expected = Selection::new(ty, anchor, Side::Left);
+                    if dragged {
+                        expected.update(Point::new(Line(-79), Column(4)), Side::Right);
+                    }
+                    processor.ctx.terminal.selection = Some(expected.clone());
+                    processor.ctx.terminal.scroll_display(Scroll::Delta(-50));
+                    let endpoint = processor
+                        .ctx
+                        .mouse
+                        .point(&size, processor.ctx.terminal.grid().display_offset());
+                    expected.update(endpoint, Side::Right);
+                    processor.on_mouse_press(MouseButton::Left);
+                    assert_eq!(processor.ctx.terminal.selection.as_ref(), Some(&expected));
+                    assert!(processor.ctx.mouse.block_hint_launcher);
+                    assert_eq!(processor.ctx.mouse.click_state, ClickState::Click);
+
+                    // A later Shift-click can cross the original anchor in the other direction.
+                    processor.ctx.terminal.scroll_display(Scroll::Top);
+                    let endpoint = processor
+                        .ctx
+                        .mouse
+                        .point(&size, processor.ctx.terminal.grid().display_offset());
+                    expected.update(endpoint, Side::Right);
+                    processor.on_mouse_press(MouseButton::Left);
+                    assert_eq!(processor.ctx.terminal.selection.as_ref(), Some(&expected));
+                    processor.ctx.terminal.scroll_display(Scroll::Bottom);
+                    processor.ctx.terminal.scroll_display(Scroll::Delta(80));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shift_click_without_anchor_and_plain_click_start_new_selections() {
+        use alacritty_terminal::index::Line;
+        use alacritty_terminal::selection::Selection;
+        let cfg = UiConfig::default();
+        let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
+        let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+        let mut mouse =
+            Mouse { cell_side: Side::Right, click_state: ClickState::Click, ..Mouse::default() };
+        let mut clipboard = Clipboard::new_nop();
+        let mut message_buffer = MessageBuffer::default();
+        let mut inline_search_state = InlineSearchState::default();
+        let mut processor = Processor::new(ActionContext {
+            terminal: &mut terminal,
+            size_info: &size,
+            mouse: &mut mouse,
+            clipboard: &mut clipboard,
+            message_buffer: &mut message_buffer,
+            modifiers: ModifiersState::SHIFT.into(),
+            config: &cfg,
+            inline_search_state: &mut inline_search_state,
+        });
+        let first = Point::new(Line(0), Column(1));
+        processor.on_left_click(first);
+        assert_eq!(
+            processor.ctx.terminal.selection,
+            Some(Selection::new(SelectionType::Simple, first, Side::Right))
+        );
+        processor.ctx.modifiers = ModifiersState::empty().into();
+        let second = Point::new(Line(3), Column(2));
+        processor.on_left_click(second);
+        assert_eq!(
+            processor.ctx.terminal.selection,
+            Some(Selection::new(SelectionType::Simple, second, Side::Right))
+        );
     }
 
     macro_rules! test_clickstate {
