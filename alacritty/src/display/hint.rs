@@ -421,7 +421,8 @@ pub fn highlighted_at<T>(
         let highlight = hint.mouse.is_some_and(|mouse| {
             mouse.enabled
                 && mouse_mods.contains(mouse.mods.0)
-                && (!mouse_mode || mouse_reporting_override(mouse_mods))
+                && (!mouse_mode
+                    || mouse_reporting_override(mouse_mods, config.mouse.shift_passthrough))
         });
         if !highlight {
             return None;

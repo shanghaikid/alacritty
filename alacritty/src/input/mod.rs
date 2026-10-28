@@ -71,8 +71,9 @@ const MAX_TAP_DISTANCE: f64 = 20.;
 const CLICK_THRESHOLD: Duration = Duration::from_millis(400);
 
 /// Modifiers which keep mouse clicks and selection in Alacritty instead of the PTY.
-pub(crate) fn mouse_reporting_override(modifiers: ModifiersState) -> bool {
-    modifiers.shift_key() || (cfg!(target_os = "macos") && modifiers.super_key())
+pub(crate) fn mouse_reporting_override(modifiers: ModifiersState, shift_passthrough: bool) -> bool {
+    (modifiers.shift_key() && !shift_passthrough)
+        || (cfg!(target_os = "macos") && modifiers.super_key())
 }
 
 /// Processes input from winit.
@@ -530,11 +531,17 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         self.ctx.mouse_mut().block_hint_launcher = true;
 
         if (lmb_pressed || rmb_pressed)
-            && (mouse_reporting_override(self.ctx.modifiers().state()) || !self.ctx.mouse_mode())
+            && (mouse_reporting_override(
+                self.ctx.modifiers().state(),
+                self.ctx.config().mouse.shift_passthrough,
+            ) || !self.ctx.mouse_mode())
         {
             self.ctx.update_selection(point, cell_side);
         } else if cell_changed
-            && !mouse_reporting_override(self.ctx.modifiers().state())
+            && !mouse_reporting_override(
+                self.ctx.modifiers().state(),
+                self.ctx.config().mouse.shift_passthrough,
+            )
             && self.ctx.terminal().mode().intersects(TermMode::MOUSE_MOTION | TermMode::MOUSE_DRAG)
         {
             if lmb_pressed {
@@ -649,7 +656,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
     fn on_mouse_press(&mut self, button: MouseButton) {
         // Handle mouse mode.
-        if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
+        if !mouse_reporting_override(
+            self.ctx.modifiers().state(),
+            self.ctx.config().mouse.shift_passthrough,
+        ) && self.ctx.mouse_mode()
+        {
             self.ctx.mouse_mut().click_state = ClickState::None;
 
             let code = match button {
@@ -741,7 +752,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
-        if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
+        if !mouse_reporting_override(
+            self.ctx.modifiers().state(),
+            self.ctx.config().mouse.shift_passthrough,
+        ) && self.ctx.mouse_mode()
+        {
             let code = match button {
                 MouseButton::Left => 0,
                 MouseButton::Middle => 1,
@@ -1090,7 +1105,9 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         let mouse_bindings = self.ctx.config().mouse_bindings().to_owned();
 
         // If mouse mode is active, also look for bindings without shift.
-        let fallback_allowed = mouse_mode && mods.contains(ModifiersState::SHIFT);
+        let fallback_allowed = mouse_mode
+            && mods.contains(ModifiersState::SHIFT)
+            && !self.ctx.config().mouse.shift_passthrough;
         let mut match_found: bool = false;
 
         for binding in &mouse_bindings {
@@ -1152,7 +1169,11 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             mouse_state
         } else if self.ctx.display().highlighted_hint.as_ref().is_some_and(hint_highlighted) {
             CursorIcon::Pointer
-        } else if !mouse_reporting_override(self.ctx.modifiers().state()) && self.ctx.mouse_mode() {
+        } else if !mouse_reporting_override(
+            self.ctx.modifiers().state(),
+            self.ctx.config().mouse.shift_passthrough,
+        ) && self.ctx.mouse_mode()
+        {
             CursorIcon::Default
         } else {
             CursorIcon::Text
@@ -1345,17 +1366,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn shift_passthrough_keeps_mouse_events_in_the_application() {
+        assert!(mouse_reporting_override(ModifiersState::SHIFT, false));
+        assert!(!mouse_reporting_override(ModifiersState::SHIFT, true));
+        assert!(!mouse_reporting_override(ModifiersState::empty(), true));
+        #[cfg(target_os = "macos")]
+        {
+            assert!(mouse_reporting_override(ModifiersState::SUPER, true));
+            assert!(mouse_reporting_override(ModifiersState::SUPER | ModifiersState::SHIFT, true));
+        }
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn command_click_bypasses_application_mouse_reporting() {
-        for modifiers in [
-            ModifiersState::empty(),
-            ModifiersState::SUPER,
-            ModifiersState::SHIFT,
-            ModifiersState::CONTROL,
-            ModifiersState::ALT,
+        for (modifiers, shift_passthrough) in [
+            (ModifiersState::empty(), false),
+            (ModifiersState::SUPER, false),
+            (ModifiersState::SHIFT, false),
+            (ModifiersState::CONTROL, false),
+            (ModifiersState::ALT, false),
+            (ModifiersState::SHIFT, true),
+            (ModifiersState::SUPER, true),
         ] {
-            let cfg = UiConfig::default();
+            let mut cfg = UiConfig::default();
+            cfg.mouse.shift_passthrough = shift_passthrough;
             let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
             let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
             let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
@@ -1376,12 +1412,17 @@ mod tests {
             };
             let mut processor = Processor::new(context);
             processor.on_mouse_press(MouseButton::Left);
-            if modifiers == ModifiersState::SUPER || modifiers == ModifiersState::SHIFT {
+            if modifiers == ModifiersState::SUPER
+                || (modifiers == ModifiersState::SHIFT && !shift_passthrough)
+            {
                 assert_eq!(processor.ctx.mouse.click_state, ClickState::Click);
                 assert!(!processor.ctx.mouse.block_hint_launcher);
             } else {
                 assert_eq!(processor.ctx.mouse.click_state, ClickState::None);
                 assert!(processor.ctx.mouse.block_hint_launcher);
+                assert!(processor.ctx.terminal.selection.is_none());
+                // A forwarded release must not fall through to native selection/hint handling.
+                processor.on_mouse_release(MouseButton::Left);
             }
         }
     }

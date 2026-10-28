@@ -664,6 +664,13 @@ Windows: _"powershell"_
 
 This section documents the *[mouse]* table of the configuration file.
 
+*shift_passthrough* = _true_ | _false_
+
+	Forward Shift-modified clicks and drags to applications that enable mouse
+	reporting. This allows tmux copy-mode bindings to extend their own selections.
+	On macOS Command still bypasses mouse reporting for native selection.
+	Default: _false_.
+
 *hide_when_typing* = _true_ | _false_
 
 	When this is _true_, the cursor is temporarily hidden when typing.

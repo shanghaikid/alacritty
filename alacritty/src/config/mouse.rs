@@ -8,6 +8,9 @@ use crate::config::ui_config;
 #[derive(ConfigDeserialize, Serialize, Default, Clone, Debug, PartialEq, Eq)]
 pub struct Mouse {
     pub hide_when_typing: bool,
+    /// Forward Shift-modified mouse events to mouse-aware applications.
+    /// On macOS Command remains available for native terminal selection.
+    pub shift_passthrough: bool,
     #[serde(skip_serializing)]
     pub bindings: MouseBindings,
 }
