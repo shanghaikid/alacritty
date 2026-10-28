@@ -20,7 +20,7 @@ FIELDS = ['selection_start_x', 'selection_start_y', 'selection_end_x', 'selectio
           'scroll_position', 'history_size', 'pane_in_mode', 'selection_present', 'selection_active']
 
 
-def exercise(keys, line_numbers):
+def exercise(keys, line_numbers, mouse_aware=False):
     with tempfile.TemporaryDirectory(prefix='alacritty-tmux-selection-') as directory:
         root = Path(directory)
         socket = root / 'server.sock'
@@ -36,6 +36,15 @@ def exercise(keys, line_numbers):
         def tmux(*args):
             return subprocess.check_output(command + list(args), text=True, stderr=subprocess.PIPE, timeout=5).strip()
         payload = "import time; print(''.join('L%03d abcdefghijklmnopqrstuvwxyz\\n' % i for i in range(100)),end='',flush=True); time.sleep(120)"
+        received = root / 'mouse-events'
+        if mouse_aware:
+            payload = (
+                "import os, sys, tty; tty.setraw(0); "
+                "print(''.join('L%03d abcdefghijklmnopqrstuvwxyz\\r\\n' % i for i in range(100)),end=''); "
+                "sys.stdout.write('\\x1b[?1002h\\x1b[?1006h'); sys.stdout.flush(); "
+                f"output = open({str(received)!r}, 'ab', buffering=0)\n"
+                "while True: output.write(os.read(0, 4096))"
+            )
         child_command = shlex.join([sys.executable, '-c', payload])
         tmux('-f', str(config), 'new-session', '-d', '-x', '60', '-y', '12', '-s', 'test', child_command)
         pid, master = pty.fork()
@@ -57,6 +66,7 @@ def exercise(keys, line_numbers):
             tick()
         try:
             tick(.7)
+            assert tmux('display-message', '-p', '-t', 'test', '#{mouse_any_flag}') == str(int(mouse_aware))
             tmux('copy-mode', '-t', 'test')
             tmux('send-keys', '-t', 'test', '-X', 'history-top')
             tick()
@@ -132,6 +142,23 @@ def exercise(keys, line_numbers):
             live_range = snapshot()
             assert live_range['selection_start_y'] == live_anchor['selection_start_y'], (live_anchor, live_range)
             assert live_range['selection_end_y'] == live_anchor['history_size'] + 6, live_range
+            if mouse_aware:
+                # Plain clicks must never leak to the application, even when it owns the mouse.
+                assert received.read_bytes() == b'', received.read_bytes()
+                # Option-click leaves copy mode and forwards a complete gesture to the app.
+                mouse(8, 14, 5)
+                mouse(8, 14, 5, True)
+                assert not snapshot()['pane_in_mode'], snapshot()
+                events = received.read_bytes()
+                assert b'\x1b[<8;14;5M' in events and b'\x1b[<8;14;5m' in events, events
+                # Option-drag must not trigger tmux's default move-pane binding.
+                tick(.4)
+                mouse(8, 14, 5)
+                mouse(40, 16, 6)
+                mouse(8, 16, 6, True)
+                assert b'\x1b[<40;16;6M' in received.read_bytes(), received.read_bytes()
+                assert not snapshot()['pane_in_mode'], snapshot()
+                tmux('copy-mode', '-t', 'test')
             # Double/triple clicks can start in the live pane, outside copy mode.
             tmux('send-keys', '-t', 'test', '-X', 'cancel')
             tick(.4)
@@ -142,7 +169,7 @@ def exercise(keys, line_numbers):
             word_or_line = snapshot()
             assert word_or_line['pane_in_mode'] and word_or_line['selection_present'], word_or_line
             assert not word_or_line['selection_active'], word_or_line
-            print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'drag_retained': True,
+            print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'mouse_aware': mouse_aware, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
                               'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True}))
         finally:
@@ -158,4 +185,5 @@ def exercise(keys, line_numbers):
 if __name__ == '__main__':
     for keys in ['vi', 'emacs']:
         for numbers in ['off', 'absolute']:
-            exercise(keys, numbers)
+            for mouse_aware in [False, True]:
+                exercise(keys, numbers, mouse_aware)
