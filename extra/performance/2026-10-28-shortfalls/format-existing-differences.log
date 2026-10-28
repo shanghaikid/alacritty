@@ -1,0 +1,457 @@
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Diff in /Users/zilliz/workspace/alacritty/alacritty/build.rs:15:
+     let dest = env::var("OUT_DIR").unwrap();
+     let mut file = File::create(Path::new(&dest).join("gl_bindings.rs")).unwrap();
+
+[31m-    Registry::new(Api::Gl, (3, 3), Profile::Core, Fallbacks::All, [
+[m[31m-        "GL_ARB_blend_func_extended",
+[m[31m-        "GL_KHR_robustness",
+[m[31m-        "GL_KHR_debug",
+[m[31m-    ])
+[m[32m+    Registry::new(
+[m[32m+        Api::Gl,
+[m[32m+        (3, 3),
+[m[32m+        Profile::Core,
+[m[32m+        Fallbacks::All,
+[m[32m+        ["GL_ARB_blend_func_extended", "GL_KHR_robustness", "GL_KHR_debug"],
+[m[32m+    )
+[m     .write_bindings(GlobalGenerator, &mut file)
+     .unwrap();
+
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/config/mod.rs:476:
+         use crate::display::color::{List, Rgb};
+
+         let config =
+[31m-            deserialize_ui_config(toml::from_str("[colors]\nindexed_colors = []").unwrap()).unwrap();
+[m[32m+            deserialize_ui_config(toml::from_str("[colors]\nindexed_colors = []").unwrap())
+[m[32m+                .unwrap();
+[m         let palette = List::from(&config.colors);
+         assert_eq!(palette[16], Rgb::new(0, 0, 0));
+         assert_eq!(palette[17], Rgb::new(0, 0, 95));
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/display/damage.rs:361:
+         let width = 10;
+         let size_info = SizeInfo::new(viewport_height, viewport_height, 5., 5., 0., 0., true);
+         frame_damage.add_viewport_rect(&size_info, x, y, width, height);
+[31m-        assert_eq!(frame_damage.rects[0], Rect {
+[m[31m-            x,
+[m[31m-            y: viewport_height as i32 - y - height,
+[m[31m-            width,
+[m[31m-            height
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            frame_damage.rects[0],
+[m[32m+            Rect { x, y: viewport_height as i32 - y - height, width, height }
+[m[32m+        );
+[m         assert_eq!(frame_damage.rects[0].y, viewport_y_to_damage_y(&size_info, y, height));
+         assert_eq!(damage_y_to_viewport_y(&size_info, &frame_damage.rects[0]), y);
+     }
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/message_bar.rs:264:
+
+         let lines = message_buffer.message().unwrap().text(&size);
+
+[31m-        assert_eq!(lines, vec![
+[m[31m-            String::from("hahahahahahahahaha [X]"),
+[m[31m-            String::from("[MESSAGE TRUNCATED]   ")
+[m[31m-        ]);
+[m[32m+        assert_eq!(
+[m[32m+            lines,
+[m[32m+            vec![String::from("hahahahahahahahaha [X]"), String::from("[MESSAGE TRUNCATED]   ")]
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/message_bar.rs:353:
+
+         let lines = message_buffer.message().unwrap().text(&size);
+
+[31m-        assert_eq!(lines, vec![
+[m[31m-            String::from("a [X]"),
+[m[31m-            String::from("bc   "),
+[m[31m-            String::from("defg ")
+[m[31m-        ]);
+[m[32m+        assert_eq!(
+[m[32m+            lines,
+[m[32m+            vec![String::from("a [X]"), String::from("bc   "), String::from("defg ")]
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/message_bar.rs:369:
+
+         let lines = message_buffer.message().unwrap().text(&size);
+
+[31m-        assert_eq!(lines, vec![
+[m[31m-            String::from("ab  [X]"),
+[m[31m-            String::from("c 👩 d  "),
+[m[31m-            String::from("fgh    ")
+[m[31m-        ]);
+[m[32m+        assert_eq!(
+[m[32m+            lines,
+[m[32m+            vec![String::from("ab  [X]"), String::from("c 👩 d  "), String::from("fgh    ")]
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/migrate/mod.rs:107:
+     };
+
+     // Move `draw_bold_text_with_bright_colors` to its own section.
+[31m-    move_value(&mut document, &["draw_bold_text_with_bright_colors"], &[
+[m[31m-        "colors",
+[m[31m-        "draw_bold_text_with_bright_colors",
+[m[31m-    ])?;
+[m[32m+    move_value(
+[m[32m+        &mut document,
+[m[32m+        &["draw_bold_text_with_bright_colors"],
+[m[32m+        &["colors", "draw_bold_text_with_bright_colors"],
+[m[32m+    )?;
+[m
+     // Move bindings to their own section.
+     move_value(&mut document, &["key_bindings"], &["keyboard", "bindings"])?;
+Diff in /Users/zilliz/workspace/alacritty/alacritty/src/migrate/mod.rs:300:
+         let mut document = input.parse::<DocumentMut>().unwrap();
+
+         move_value(&mut document, &["root_value"], &["new_table", "root_value"]).unwrap();
+[31m-        move_value(&mut document, &["table", "table_value"], &[
+[m[31m-            "preexisting",
+[m[31m-            "subtable",
+[m[31m-            "new_name",
+[m[31m-        ])
+[m[32m+        move_value(
+[m[32m+            &mut document,
+[m[32m+            &["table", "table_value"],
+[m[32m+            &["preexisting", "subtable", "new_name"],
+[m[32m+        )
+[m         .unwrap();
+
+         let output = document.to_string();
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Diff in /Users/zilliz/workspace/alacritty/alacritty_config_derive/tests/config.rs:126:
+     // Verify all log messages are correct.
+     let mut error_logs = logger.error_logs.lock().unwrap();
+     error_logs.sort_unstable();
+[31m-    assert_eq!(error_logs.as_slice(), [
+[m[31m-        "Config error: enom_error: unknown variant `HugaBuga`, expected one of `One`, `Two`, \
+[m[32m+    assert_eq!(
+[m[32m+        error_logs.as_slice(),
+[m[32m+        [
+[m[32m+            "Config error: enom_error: unknown variant `HugaBuga`, expected one of `One`, `Two`, \
+[m          `Three`",
+[31m-        "Config error: field1: invalid type: string \"testing\", expected usize",
+[m[31m-    ]);
+[m[32m+            "Config error: field1: invalid type: string \"testing\", expected usize",
+[m[32m+        ]
+[m[32m+    );
+[m     let mut warn_logs = logger.warn_logs.lock().unwrap();
+     warn_logs.sort_unstable();
+[31m-    assert_eq!(warn_logs.as_slice(), [
+[m[31m-        "Config warning: enom_error has been deprecated\nUse `alacritty migrate` to automatically \
+[m[32m+    assert_eq!(
+[m[32m+        warn_logs.as_slice(),
+[m[32m+        [
+[m[32m+            "Config warning: enom_error has been deprecated\nUse `alacritty migrate` to automatically \
+[m          resolve it",
+[31m-        "Config warning: field1 has been deprecated; use field2 instead\nUse `alacritty migrate` \
+[m[32m+            "Config warning: field1 has been deprecated; use field2 instead\nUse `alacritty migrate` \
+[m          to automatically resolve it",
+[31m-        "Config warning: gone has been removed; it's gone\nUse `alacritty migrate` to \
+[m[32m+            "Config warning: gone has been removed; it's gone\nUse `alacritty migrate` to \
+[m          automatically resolve it",
+[31m-        "Unused config key: field3",
+[m[31m-    ]);
+[m[32m+            "Unused config key: field3",
+[m[32m+        ]
+[m[32m+    );
+[m }
+
+ /// Logger storing all messages for later validation.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:416:
+         let mut selection = Selection::new(SelectionType::Simple, location, Side::Left);
+         selection.update(location, Side::Right);
+
+[31m-        assert_eq!(selection.to_range(&term(1, 2)).unwrap(), SelectionRange {
+[m[31m-            start: location,
+[m[31m-            end: location,
+[m[31m-            is_block: false
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(1, 2)).unwrap(),
+[m[32m+            SelectionRange { start: location, end: location, is_block: false }
+[m[32m+        );
+[m     }
+
+     /// Test case of single cell selection.
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:434:
+         let mut selection = Selection::new(SelectionType::Simple, location, Side::Right);
+         selection.update(location, Side::Left);
+
+[31m-        assert_eq!(selection.to_range(&term(1, 2)).unwrap(), SelectionRange {
+[m[31m-            start: location,
+[m[31m-            end: location,
+[m[31m-            is_block: false
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(1, 2)).unwrap(),
+[m[32m+            SelectionRange { start: location, end: location, is_block: false }
+[m[32m+        );
+[m     }
+
+     /// Test adjacent cell selection from left to right.
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:524:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(0)..Line(size.0 as i32)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(0), Column(0)),
+[m[31m-            end: Point::new(Line(5), Column(4)),
+[m[31m-            is_block: false,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(0), Column(0)),
+[m[32m+                end: Point::new(Line(5), Column(4)),
+[m[32m+                is_block: false,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:539:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(0)..Line(size.0 as i32)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(0), Column(1)),
+[m[31m-            end: Point::new(Line(5), Column(3)),
+[m[31m-            is_block: false,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(0), Column(1)),
+[m[32m+                end: Point::new(Line(5), Column(3)),
+[m[32m+                is_block: false,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:554:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(0)..Line(size.0 as i32)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(0), Column(2)),
+[m[31m-            end: Point::new(Line(5), Column(3)),
+[m[31m-            is_block: false,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(0), Column(2)),
+[m[32m+                end: Point::new(Line(5), Column(3)),
+[m[32m+                is_block: false,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:569:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(0)..Line(size.0 as i32)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(0), Column(2)),
+[m[31m-            end: Point::new(Line(5), Column(3)),
+[m[31m-            is_block: true
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(0), Column(2)),
+[m[32m+                end: Point::new(Line(5), Column(3)),
+[m[32m+                is_block: true
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:612:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(1)..Line(size.0 as i32 - 1)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(1), Column(0)),
+[m[31m-            end: Point::new(Line(3), Column(3)),
+[m[31m-            is_block: false,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(1), Column(0)),
+[m[32m+                end: Point::new(Line(3), Column(3)),
+[m[32m+                is_block: false,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:627:
+         selection.update(Point::new(Line(1), Column(1)), Side::Left);
+         selection = selection.rotate(&size, &(Line(1)..Line(size.0 as i32 - 1)), -5).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(6), Column(1)),
+[m[31m-            end: Point::new(Line(8), size.last_column()),
+[m[31m-            is_block: false,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(6), Column(1)),
+[m[32m+                end: Point::new(Line(8), size.last_column()),
+[m[32m+                is_block: false,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Diff in /Users/zilliz/workspace/alacritty/alacritty_terminal/src/selection.rs:642:
+         selection.update(Point::new(Line(4), Column(1)), Side::Right);
+         selection = selection.rotate(&size, &(Line(1)..Line(size.0 as i32 - 1)), 4).unwrap();
+
+[31m-        assert_eq!(selection.to_range(&term(size.0, size.1)).unwrap(), SelectionRange {
+[m[31m-            start: Point::new(Line(1), Column(2)),
+[m[31m-            end: Point::new(Line(3), Column(3)),
+[m[31m-            is_block: true,
+[m[31m-        });
+[m[32m+        assert_eq!(
+[m[32m+            selection.to_range(&term(size.0, size.1)).unwrap(),
+[m[32m+            SelectionRange {
+[m[32m+                start: Point::new(Line(1), Column(2)),
+[m[32m+                end: Point::new(Line(3), Column(3)),
+[m[32m+                is_block: true,
+[m[32m+            }
+[m[32m+        );
+[m     }
+
+     #[test]
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.
+Warning: can't set `wrap_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_code_in_doc_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `comment_width = 100`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_comments = true`, unstable features are only available in nightly channel.
+Warning: can't set `normalize_doc_attributes = true`, unstable features are only available in nightly channel.
+Warning: can't set `format_strings = true`, unstable features are only available in nightly channel.
+Warning: can't set `imports_granularity = Module`, unstable features are only available in nightly channel.
+Warning: can't set `reorder_impl_items = true`, unstable features are only available in nightly channel.
+Warning: can't set `overflow_delimited_expr = true`, unstable features are only available in nightly channel.
+Warning: can't set `condense_wildcard_suffixes = true`, unstable features are only available in nightly channel.

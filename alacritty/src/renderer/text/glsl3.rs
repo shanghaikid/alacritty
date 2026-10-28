@@ -13,7 +13,7 @@ use crate::gl::types::*;
 use crate::renderer::Error;
 use crate::renderer::shader::{ShaderProgram, ShaderVersion};
 
-use super::atlas::{ATLAS_SIZE, Atlas};
+use super::atlas::{Atlas, INITIAL_ATLAS_SIZE};
 use super::{
     Glyph, LoadGlyph, LoaderApi, RenderingGlyphFlags, RenderingPass, TextRenderApi,
     TextRenderBatch, TextRenderer, TextShader,
@@ -25,6 +25,7 @@ const TEXT_SHADER_V: &str = include_str!("../../../res/glsl3/text.v.glsl");
 
 /// Maximum items to be drawn in a batch.
 const BATCH_MAX: usize = 0x1_0000;
+const BATCH_INITIAL: usize = 1024;
 
 #[derive(Debug)]
 pub struct Glsl3Renderer {
@@ -78,7 +79,7 @@ impl Glsl3Renderer {
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo_instance);
             gl::BufferData(
                 gl::ARRAY_BUFFER,
-                (BATCH_MAX * size_of::<InstanceData>()) as isize,
+                (BATCH_INITIAL * size_of::<InstanceData>()) as isize,
                 ptr::null(),
                 gl::STREAM_DRAW,
             );
@@ -137,7 +138,7 @@ impl Glsl3Renderer {
             vao,
             ebo,
             vbo_instance,
-            atlas: vec![Atlas::new(ATLAS_SIZE, false)],
+            atlas: vec![Atlas::new(INITIAL_ATLAS_SIZE, false)],
             current_atlas: 0,
             active_tex: 0,
             batch: Batch::new(),
@@ -222,6 +223,15 @@ impl TextRenderApi<Batch> for RenderApi<'_> {
 
     fn render_batch(&mut self) {
         unsafe {
+            if self.batch.len() > self.batch.gpu_capacity {
+                self.batch.gpu_capacity = self.batch.len().next_power_of_two().min(BATCH_MAX);
+                gl::BufferData(
+                    gl::ARRAY_BUFFER,
+                    (self.batch.gpu_capacity * size_of::<InstanceData>()) as isize,
+                    ptr::null(),
+                    gl::STREAM_DRAW,
+                );
+            }
             gl::BufferSubData(
                 gl::ARRAY_BUFFER,
                 0,
@@ -321,6 +331,7 @@ struct InstanceData {
 pub struct Batch {
     tex: GLuint,
     instances: Vec<InstanceData>,
+    gpu_capacity: usize,
 }
 
 impl TextRenderBatch for Batch {
@@ -378,7 +389,9 @@ impl TextRenderBatch for Batch {
 impl Batch {
     #[inline]
     pub fn new() -> Self {
-        Self { tex: 0, instances: Vec::with_capacity(BATCH_MAX) }
+        // Keep the existing maximum batch size/draw-call behavior, but only
+        // allocate GPU and CPU storage for the glyphs the window actually uses.
+        Self { tex: 0, instances: Vec::with_capacity(BATCH_INITIAL), gpu_capacity: BATCH_INITIAL }
     }
 
     #[inline]

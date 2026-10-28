@@ -1,0 +1,174 @@
+[
+  {
+    "history_limit": 10000,
+    "terminal_pid": 84156,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 67.893310546875,
+      "resident_mib": 72.765625,
+      "cpu_seconds": 0.12734379166666668,
+      "idle_wakes": 0,
+      "interrupt_wakes": 15
+    },
+    "history_active": {
+      "footprint_mib": 97.783935546875,
+      "resident_mib": 100.0625,
+      "cpu_seconds": 0.1579385,
+      "idle_wakes": 0,
+      "interrupt_wakes": 17
+    },
+    "history_idle": {
+      "footprint_mib": 60.377685546875,
+      "resident_mib": 91.21875,
+      "cpu_seconds": 0.23396791666666666,
+      "idle_wakes": 16,
+      "interrupt_wakes": 62
+    },
+    "idle": {
+      "seconds": 3.0082307923585176,
+      "cpu_percent_one_core": 0.013874434137839758,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 61.174560546875,
+      "resident_mib": 83.046875,
+      "cpu_seconds": 0.24774241666666666,
+      "idle_wakes": 17,
+      "interrupt_wakes": 68
+    },
+    "complete": true,
+    "terminal": "alacritty"
+  },
+  {
+    "history_limit": 10000,
+    "terminal_pid": 84330,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 62.1435546875,
+      "resident_mib": 100.9375,
+      "cpu_seconds": 0.196984375,
+      "idle_wakes": 2,
+      "interrupt_wakes": 62
+    },
+    "history_active": {
+      "footprint_mib": 75.1904296875,
+      "resident_mib": 113.15625,
+      "cpu_seconds": 0.2510765833333333,
+      "idle_wakes": 2,
+      "interrupt_wakes": 65
+    },
+    "history_idle": {
+      "footprint_mib": 59.8466796875,
+      "resident_mib": 113.75,
+      "cpu_seconds": 0.26291858333333334,
+      "idle_wakes": 2,
+      "interrupt_wakes": 270
+    },
+    "idle": {
+      "seconds": 3.0101992078125477,
+      "cpu_percent_one_core": 0.012964258278559838,
+      "wakeups_per_second": 0.3322039277017418
+    },
+    "cleared_idle": {
+      "footprint_mib": 59.7373046875,
+      "resident_mib": 113.65625,
+      "cpu_seconds": 0.2685718333333333,
+      "idle_wakes": 6,
+      "interrupt_wakes": 281
+    },
+    "complete": true,
+    "terminal": "ghostty"
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 84518,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 67.9554443359375,
+      "resident_mib": 72.9375,
+      "cpu_seconds": 0.13221670833333332,
+      "idle_wakes": 1,
+      "interrupt_wakes": 15
+    },
+    "history_active": {
+      "footprint_mib": 366.0654296875,
+      "resident_mib": 368.078125,
+      "cpu_seconds": 0.311791125,
+      "idle_wakes": 1,
+      "interrupt_wakes": 18
+    },
+    "history_idle": {
+      "footprint_mib": 75.64324951171875,
+      "resident_mib": 143.703125,
+      "cpu_seconds": 0.7456180416666667,
+      "idle_wakes": 133,
+      "interrupt_wakes": 419
+    },
+    "idle": {
+      "seconds": 3.0100133339874446,
+      "cpu_percent_one_core": 0.009617897593046015,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 64.75262451171875,
+      "resident_mib": 143.609375,
+      "cpu_seconds": 0.7652819583333333,
+      "idle_wakes": 134,
+      "interrupt_wakes": 423
+    },
+    "complete": true,
+    "terminal": "alacritty"
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 84687,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 63.09661865234375,
+      "resident_mib": 101.921875,
+      "cpu_seconds": 0.21311616666666666,
+      "idle_wakes": 5,
+      "interrupt_wakes": 56
+    },
+    "history_active": {
+      "footprint_mib": 168.09674072265625,
+      "resident_mib": 203.78125,
+      "cpu_seconds": 0.4585080833333333,
+      "idle_wakes": 5,
+      "interrupt_wakes": 63
+    },
+    "history_idle": {
+      "footprint_mib": 66.51861572265625,
+      "resident_mib": 209.125,
+      "cpu_seconds": 0.550196875,
+      "idle_wakes": 509,
+      "interrupt_wakes": 1024
+    },
+    "idle": {
+      "seconds": 3.010335084050894,
+      "cpu_percent_one_core": 0.01320866245444305,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.54986572265625,
+      "resident_mib": 209.078125,
+      "cpu_seconds": 0.5819988333333334,
+      "idle_wakes": 512,
+      "interrupt_wakes": 1034
+    },
+    "complete": true,
+    "terminal": "ghostty"
+  }
+]

@@ -1,0 +1,53 @@
+    Updating crates.io index
+warning: failed to write cache, path: /Users/zilliz/.cargo/registry/index/index.crates.io-1949cf8c6b5b557f/.cache/ge/th/gethostname, error: Permission denied (os error 13)
+warning: failed to auto-clean cache data
+
+failed to clean entries from the global cache
+
+Caused by:
+  failed to remove file `/Users/zilliz/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_json-1.0.149/Cargo.toml`
+
+Caused by:
+  Permission denied (os error 13)
+   Compiling proc-macro2 v1.0.101
+   Compiling unicode-ident v1.0.19
+   Compiling quote v1.0.41
+   Compiling serde_core v1.0.228
+   Compiling serde v1.0.228
+   Compiling libc v0.2.176
+   Compiling memchr v2.7.6
+   Compiling rustix v1.1.2
+   Compiling parking_lot_core v0.9.12
+   Compiling cfg-if v1.0.3
+   Compiling signal-hook v0.4.3
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling aho-corasick v1.1.3
+   Compiling regex-syntax v0.8.6
+   Compiling base64 v0.22.1
+   Compiling cursor-icon v1.2.0
+   Compiling arrayvec v0.7.6
+   Compiling log v0.4.28
+   Compiling serde_json v1.0.145
+   Compiling unicode-width v0.2.2
+   Compiling syn v2.0.106
+   Compiling regex-automata v0.4.11
+   Compiling errno v0.3.14
+   Compiling signal-hook-registry v1.4.6
+   Compiling unicode-segmentation v1.12.0
+   Compiling itoa v1.0.15
+   Compiling lz4_flex v0.11.6
+   Compiling home v0.5.11
+   Compiling ryu v1.0.20
+   Compiling serde_derive v1.0.228
+   Compiling bitflags v2.9.4
+   Compiling smallvec v1.15.1
+   Compiling alacritty_status v0.1.0 (/Users/zilliz/workspace/alacritty/alacritty_status)
+   Compiling vte v0.15.0 (https://github.com/shanghaikid/vte.git?rev=7cfdf88e709ab444ed9d69b6bd16c02d7c092839#7cfdf88e)
+   Compiling parking_lot v0.12.5
+   Compiling polling v3.11.0
+   Compiling rustix-openpty v0.2.0
+   Compiling alacritty_terminal v0.26.0 (/Users/zilliz/workspace/alacritty/alacritty_terminal)
+    Finished `release` profile [optimized + debuginfo] target(s) in 13.31s
+     Running `/private/tmp/alacritty-idle-target.l68mgh/release/examples/history-performance 100000`
+Storage layout: Cell=24 Row<Cell>=32 CompactRow<Cell>=16

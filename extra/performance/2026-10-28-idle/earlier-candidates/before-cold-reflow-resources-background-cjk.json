@@ -1,0 +1,320 @@
+[
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 8276,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.12750244140625,
+      "resident_mib": 74.546875,
+      "cpu_seconds": 0.158094375,
+      "idle_wakes": 0,
+      "interrupt_wakes": 16
+    },
+    "history_fill_seconds": 0.15445395791903138,
+    "history_active": {
+      "footprint_mib": 147.04974365234375,
+      "resident_mib": 159.984375,
+      "cpu_seconds": 0.38891695833333334,
+      "idle_wakes": 0,
+      "interrupt_wakes": 19
+    },
+    "history_idle": {
+      "footprint_mib": 71.1435546875,
+      "resident_mib": 143.125,
+      "cpu_seconds": 0.70141175,
+      "idle_wakes": 43,
+      "interrupt_wakes": 416
+    },
+    "idle": {
+      "seconds": 3.0068877497687936,
+      "cpu_percent_one_core": 0.0031635700403943607,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 63.81536865234375,
+      "resident_mib": 123.21875,
+      "cpu_seconds": 0.7133559166666666,
+      "idle_wakes": 44,
+      "interrupt_wakes": 421
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 0,
+    "binary_sha256": "353c8fbdcab8497b2c0fd68cb84aed3173f28b0b030b8a8c15a508d112c9fea5",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 147.04974365234375,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 8525,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 66.0499267578125,
+      "resident_mib": 107.4375,
+      "cpu_seconds": 0.24210420833333335,
+      "idle_wakes": 6,
+      "interrupt_wakes": 91
+    },
+    "history_fill_seconds": 0.13059412501752377,
+    "history_active": {
+      "footprint_mib": 163.36279296875,
+      "resident_mib": 208.53125,
+      "cpu_seconds": 0.4839514583333333,
+      "idle_wakes": 6,
+      "interrupt_wakes": 123
+    },
+    "history_idle": {
+      "footprint_mib": 66.03466796875,
+      "resident_mib": 213.53125,
+      "cpu_seconds": 0.5420290416666667,
+      "idle_wakes": 53,
+      "interrupt_wakes": 1115
+    },
+    "idle": {
+      "seconds": 3.0053113335743546,
+      "cpu_percent_one_core": 0.31194771387794634,
+      "wakeups_per_second": 2.994698053228278
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.00341796875,
+      "resident_mib": 213.5,
+      "cpu_seconds": 0.5741147916666667,
+      "idle_wakes": 69,
+      "interrupt_wakes": 1209
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 0,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 163.36279296875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 8773,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.51873779296875,
+      "resident_mib": 107.828125,
+      "cpu_seconds": 0.22938533333333333,
+      "idle_wakes": 4,
+      "interrupt_wakes": 105
+    },
+    "history_fill_seconds": 0.1380637912079692,
+    "history_active": {
+      "footprint_mib": 158.9410400390625,
+      "resident_mib": 209.015625,
+      "cpu_seconds": 0.49631625,
+      "idle_wakes": 4,
+      "interrupt_wakes": 132
+    },
+    "history_idle": {
+      "footprint_mib": 66.2066650390625,
+      "resident_mib": 214.328125,
+      "cpu_seconds": 0.5713395416666667,
+      "idle_wakes": 185,
+      "interrupt_wakes": 1018
+    },
+    "idle": {
+      "seconds": 3.003931582905352,
+      "cpu_percent_one_core": 0.3325489076886678,
+      "wakeups_per_second": 1.9973823751994049
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.2222900390625,
+      "resident_mib": 214.34375,
+      "cpu_seconds": 0.6026529166666666,
+      "idle_wakes": 199,
+      "interrupt_wakes": 1111
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 1,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 158.9410400390625,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 9024,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 62.79949951171875,
+      "resident_mib": 75.140625,
+      "cpu_seconds": 0.16360595833333336,
+      "idle_wakes": 1,
+      "interrupt_wakes": 15
+    },
+    "history_fill_seconds": 0.1636912920512259,
+    "history_active": {
+      "footprint_mib": 156.6904296875,
+      "resident_mib": 169.453125,
+      "cpu_seconds": 0.4262441666666667,
+      "idle_wakes": 1,
+      "interrupt_wakes": 20
+    },
+    "history_idle": {
+      "footprint_mib": 71.9091796875,
+      "resident_mib": 147.53125,
+      "cpu_seconds": 0.6788324583333334,
+      "idle_wakes": 40,
+      "interrupt_wakes": 416
+    },
+    "idle": {
+      "seconds": 3.0055345841683447,
+      "cpu_percent_one_core": 0.011545367064741458,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 64.81536865234375,
+      "resident_mib": 130.453125,
+      "cpu_seconds": 0.6954134583333333,
+      "idle_wakes": 40,
+      "interrupt_wakes": 420
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 1,
+    "binary_sha256": "353c8fbdcab8497b2c0fd68cb84aed3173f28b0b030b8a8c15a508d112c9fea5",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 156.7060546875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 9279,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 60.5181884765625,
+      "resident_mib": 74.984375,
+      "cpu_seconds": 0.18603745833333335,
+      "idle_wakes": 1,
+      "interrupt_wakes": 15
+    },
+    "history_fill_seconds": 0.17644066689535975,
+    "history_active": {
+      "footprint_mib": 150.0654296875,
+      "resident_mib": 162.890625,
+      "cpu_seconds": 0.4448642916666667,
+      "idle_wakes": 1,
+      "interrupt_wakes": 18
+    },
+    "history_idle": {
+      "footprint_mib": 68.1904296875,
+      "resident_mib": 138.484375,
+      "cpu_seconds": 0.7911753333333333,
+      "idle_wakes": 93,
+      "interrupt_wakes": 417
+    },
+    "idle": {
+      "seconds": 3.0043605831451714,
+      "cpu_percent_one_core": 0.008708175758522169,
+      "wakeups_per_second": 0.33284952732042944
+    },
+    "cleared_idle": {
+      "footprint_mib": 54.34661865234375,
+      "resident_mib": 123.46875,
+      "cpu_seconds": 0.8116350416666667,
+      "idle_wakes": 95,
+      "interrupt_wakes": 421
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 2,
+    "binary_sha256": "353c8fbdcab8497b2c0fd68cb84aed3173f28b0b030b8a8c15a508d112c9fea5",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 150.1748046875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 9524,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 66.6278076171875,
+      "resident_mib": 108.828125,
+      "cpu_seconds": 0.3342140416666667,
+      "idle_wakes": 3,
+      "interrupt_wakes": 143
+    },
+    "history_fill_seconds": 0.12358683301135898,
+    "history_active": {
+      "footprint_mib": 163.94091796875,
+      "resident_mib": 209.78125,
+      "cpu_seconds": 0.57793225,
+      "idle_wakes": 3,
+      "interrupt_wakes": 164
+    },
+    "history_idle": {
+      "footprint_mib": 71.17529296875,
+      "resident_mib": 215.0625,
+      "cpu_seconds": 0.648802875,
+      "idle_wakes": 169,
+      "interrupt_wakes": 1042
+    },
+    "idle": {
+      "seconds": 3.0055856672115624,
+      "cpu_percent_one_core": 0.031544046262803445,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 69.12841796875,
+      "resident_mib": 215.0,
+      "cpu_seconds": 0.6799304583333333,
+      "idle_wakes": 170,
+      "interrupt_wakes": 1057
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 2,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "launch": {
+      "mode": "background",
+      "library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf"
+    },
+    "sampled_peak_footprint_mib": 163.94091796875,
+    "sampling_interval_seconds": 0.01
+  }
+]

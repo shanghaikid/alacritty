@@ -336,6 +336,8 @@ pub struct Term<T> {
 
     /// Reused input buffer for incremental Unicode grapheme segmentation.
     grapheme_buffer: String,
+    /// Bounded memoization of Unicode segmentation and width for short clusters.
+    grapheme_cache: grapheme::ClusterCache,
 }
 
 /// Configuration options for the [`Term`].
@@ -442,6 +444,7 @@ impl<T> Term<T> {
             damage,
             config,
             grapheme_buffer: String::new(),
+            grapheme_cache: Default::default(),
             grid,
             tabs,
             inactive_keyboard_mode_stack: Default::default(),
@@ -1001,7 +1004,8 @@ impl<T> Term<T> {
 
         trace!("Wrapping input");
 
-        self.grid.cursor_cell().flags.insert(Flags::WRAPLINE);
+        let point = self.grid.cursor.point;
+        self.grid[point.line].mark_wrapped(point.column);
 
         if self.grid.cursor.point.line + 1 >= self.scroll_region.end {
             self.linefeed();
@@ -1107,6 +1111,153 @@ impl<T: EventListener> Handler for Term<T> {
 
     fn shell_prompt(&mut self) {
         self.status_dirty |= self.program_status.expire_transient();
+    }
+
+    /// Fill printable ASCII runs without repeating per-character mode checks.
+    fn input_ascii(&mut self, mut text: &[u8]) {
+        // These modes need per-character shifts or charset translation. Keep
+        // their scalar implementation as the reference path.
+        if self.mode.contains(TermMode::INSERT)
+            || !self.mode.contains(TermMode::LINE_WRAP)
+            || self.grid.cursor.charsets[self.active_charset] != StandardCharset::Ascii
+            || self.grid.cursor.template.extra.is_some()
+        {
+            for &byte in text {
+                self.input(byte as char);
+            }
+            return;
+        }
+
+        while !text.is_empty() {
+            if self.grid.cursor.input_needs_wrap {
+                self.wrapline();
+            }
+            let point = self.grid.cursor.point;
+            let count = text.len().min(self.columns() - point.column.0);
+            let template = &self.grid.cursor.template;
+            let (fg, bg, flags) = (template.fg, template.bg, template.flags);
+            if self.grid[point.line].is_packed() || (count >= 16 && self.grid[point.line].occ == 0)
+            {
+                if let Some(written) = self.grid[point.line].try_write_ascii(
+                    point.column,
+                    &text[..count],
+                    fg,
+                    bg,
+                    flags,
+                ) {
+                    let next = point.column + written;
+                    self.grid.cursor.point.column = next.min(self.last_column());
+                    self.grid.cursor.input_needs_wrap = next == self.columns();
+                    text = &text[written..];
+                    continue;
+                }
+            }
+            let row = &self.grid[point.line][point.column..point.column + count];
+            // Overwriting either half of a wide glyph also repairs neighboring
+            // cells. Stop before it and let the normal path do that repair.
+            let count = row
+                .iter()
+                .position(|cell| cell.flags.intersects(Flags::WIDE_CHAR | Flags::WIDE_CHAR_SPACER))
+                .unwrap_or(count);
+            if count == 0 {
+                self.input(text[0] as char);
+                text = &text[1..];
+                continue;
+            }
+
+            let fg = self.grid.cursor.template.fg;
+            let bg = self.grid.cursor.template.bg;
+            let flags = self.grid.cursor.template.flags;
+            let row = &mut self.grid[point.line][point.column..point.column + count];
+            for (cell, &byte) in row.iter_mut().zip(&text[..count]) {
+                *cell = Cell { c: byte as char, fg, bg, flags, extra: None };
+            }
+            let next = point.column + count;
+            self.grid.cursor.point.column = next.min(self.last_column());
+            self.grid.cursor.input_needs_wrap = next == self.columns();
+            text = &text[count..];
+        }
+    }
+
+    fn input_unicode(&mut self, text: &str) {
+        if self.mode.contains(TermMode::INSERT)
+            || !self.mode.contains(TermMode::LINE_WRAP)
+            || self.grid.cursor.charsets[self.active_charset] != StandardCharset::Ascii
+            || self.grid.cursor.template.extra.is_some()
+        {
+            for c in text.chars() {
+                self.input(c);
+            }
+            return;
+        }
+
+        let mut chars = text.chars().peekable();
+        while let Some(&c) = chars.peek() {
+            let eligible = |c: char| grapheme::independent(c) && c.width() == Some(2);
+            if !eligible(c) || !self.can_start_wide_run() {
+                chars.next();
+                self.input(c);
+                continue;
+            }
+            if self.grid.cursor.input_needs_wrap {
+                self.wrapline();
+            }
+            let point = self.grid.cursor.point;
+            let room = (self.columns() - point.column.0) / 2;
+            if self.grid[point.line].is_packed()
+                || (chars.size_hint().0 >= 8 && self.grid[point.line].occ == 0)
+            {
+                let template = self.grid.cursor.template.clone();
+                if let Some(written) = self.grid[point.line].try_write_wide(
+                    point.column,
+                    &mut chars,
+                    eligible,
+                    &template,
+                ) {
+                    let next = point.column + written;
+                    self.grid.cursor.point.column = next.min(self.last_column());
+                    self.grid.cursor.input_needs_wrap = next == self.columns();
+                    continue;
+                }
+            }
+            let template = &self.grid.cursor.template;
+            let (fg, bg, flags) = (template.fg, template.bg, template.flags);
+            let grid_row = &mut self.grid[point.line];
+            let previous_occupied = grid_row.occ;
+            let row = &mut grid_row[point.column..point.column + room * 2];
+            let mut written = 0;
+            for pair in row.chunks_exact_mut(2) {
+                let Some(&c) = chars.peek() else {
+                    break;
+                };
+                if !eligible(c)
+                    || pair.iter().any(|cell| {
+                        cell.flags.intersects(Flags::WIDE_CHAR | Flags::WIDE_CHAR_SPACER)
+                    })
+                {
+                    break;
+                }
+                chars.next();
+                pair[0] = Cell { c, fg, bg, flags: flags | Flags::WIDE_CHAR, extra: None };
+                pair[1] =
+                    Cell { c: ' ', fg, bg, flags: flags | Flags::WIDE_CHAR_SPACER, extra: None };
+                written += 2;
+            }
+            // The mutable range reserves all available pairs, but a short
+            // Unicode run may only touch one. Keep reset work proportional to
+            // what we actually wrote instead of dirtying the entire row.
+            grid_row.occ = previous_occupied.max(point.column.0 + written);
+            if written == 0 {
+                // Includes an odd last column and overwriting existing wide
+                // characters: the scalar path repairs their adjacent cells.
+                chars.next();
+                self.input(c);
+            } else {
+                let next = point.column + written;
+                self.grid.cursor.point.column = next.min(self.last_column());
+                self.grid.cursor.input_needs_wrap = next == self.columns();
+            }
+        }
     }
 
     /// A character to be displayed.
@@ -2574,6 +2725,181 @@ mod tests {
     use crate::term::cell::{Cell, Flags};
     use crate::term::test::TermSize;
     use crate::vte::ansi::{self, CharsetIndex, Handler, StandardCharset};
+
+    #[test]
+    fn ascii_runs_match_scalar_grid_and_cursor() {
+        let prefixes = [
+            "",
+            "\x1b[4h",
+            "\x1b[?7l",
+            "\x1b(0",
+            "\x1b[1;31;44m",
+            "\x1b]8;id=diff-test;https://example.com\x1b\\",
+            "\x1b[4;58;5;2m",
+            "中文中文\r",
+            "中文中文\x1b[1;2H",
+            "👩‍💻❤️\r",
+            "\x1b[2;3r\x1b[3;1H",
+            "\x1b[?1049h",
+        ];
+        for columns in [1, 2, 7, 80] {
+            for prefix in prefixes {
+                // The scalar terminal cannot place a wide glyph in a
+                // one-column grid; test its ASCII behavior separately.
+                if columns == 1 && !prefix.is_ascii() {
+                    continue;
+                }
+                for chunk_size in [1, 3, 17, 300] {
+                    let config = Config { grapheme_clusters: true, ..Config::default() };
+                    let size = TermSize::new(columns, 4);
+                    let mut batch = Term::new(config.clone(), &size, VoidListener);
+                    let mut scalar = Term::new(config, &size, VoidListener);
+                    for term in [&mut batch, &mut scalar] {
+                        let mut parser: ansi::Processor = ansi::Processor::new();
+                        parser.advance(term, prefix.as_bytes());
+                        term.reset_damage();
+                    }
+                    let text = b"hello! 0123456789 ~_+-".repeat(9);
+                    for chunk in text.chunks(chunk_size) {
+                        batch.input_ascii(chunk);
+                        for &byte in chunk {
+                            scalar.input(byte as char);
+                        }
+                    }
+                    // Combining and widening following a batch must observe
+                    // exactly the same preceding cell and pending wrap state.
+                    let suffix = if columns == 1 { "\u{301}" } else { "\u{301}❤️中文" };
+                    for c in suffix.chars() {
+                        batch.input(c);
+                        scalar.input(c);
+                    }
+                    assert_eq!(
+                        batch.grid.cursor, scalar.grid.cursor,
+                        "columns={columns} prefix={prefix:?} chunks={chunk_size}"
+                    );
+                    assert_eq!(batch.history_size(), scalar.history_size());
+                    for line in -(batch.history_size() as i32)..4 {
+                        for column in 0..columns {
+                            let point = Point::new(Line(line), Column(column));
+                            assert_eq!(
+                                batch.grid[point], scalar.grid[point],
+                                "columns={columns} prefix={prefix:?} point={point:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bulk_writes_preserve_new_columns_after_colored_row_growth() {
+        for text in ["abcdefghijklmnop", "中文日本語한글中文日本語한글"] {
+            let config = Config::default();
+            let size = TermSize::new(40, 4);
+            let mut batch = Term::new(config.clone(), &size, VoidListener);
+            let mut scalar = Term::new(config, &size, VoidListener);
+            for term in [&mut batch, &mut scalar] {
+                term.grid.cursor.template.bg = Color::Indexed(4);
+                term.grid.reset_region(..);
+                term.resize(TermSize::new(80, 4));
+            }
+            if text.is_ascii() {
+                batch.input_ascii(text.as_bytes());
+            } else {
+                batch.input_unicode(text);
+            }
+            for c in text.chars() {
+                scalar.input(c);
+            }
+            for line in 0..4 {
+                assert_eq!(batch.grid[Line(line)], scalar.grid[Line(line)]);
+                for column in 40..80 {
+                    assert_eq!(batch.grid[Line(line)][Column(column)], Cell::default());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_character_after_ascii_run() {
+        let mut term = Term::new(Config::default(), &TermSize::new(12, 2), VoidListener);
+        let mut parser: ansi::Processor = ansi::Processor::new();
+        parser.advance(&mut term, b"abc\x1b[3b");
+        let text: String = (0..6).map(|c| term.grid[Line(0)][Column(c)].c).collect();
+        assert_eq!(text, "abcccc");
+    }
+
+    #[test]
+    fn unicode_runs_match_scalar_grid_and_cursor() {
+        let prefixes = [
+            "",
+            "中文\r",
+            "\x1b[4h",
+            "\x1b[?7l",
+            "\x1b(0",
+            "\x1b[1;31;44m",
+            "\x1b]8;id=diff;https://example.com\x1b\\",
+            "\x1b[2;3r\x1b[3H",
+            "\x1b[?1049h",
+            "\u{600}",
+            "👩‍",
+            "❤️",
+        ];
+        for columns in [2, 3, 7, 80] {
+            for prefix in prefixes {
+                for chunk_size in [1, 3, 17, 300] {
+                    let config = Config { grapheme_clusters: true, ..Config::default() };
+                    let size = TermSize::new(columns, 4);
+                    let mut batch = Term::new(config.clone(), &size, VoidListener);
+                    let mut scalar = Term::new(config, &size, VoidListener);
+                    for term in [&mut batch, &mut scalar] {
+                        let mut parser: ansi::Processor = ansi::Processor::new();
+                        parser.advance(term, prefix.as_bytes());
+                    }
+                    let text: Vec<char> = "中文测试、日本語と한글。〰ｅ\u{301}👩‍💻🇨🇳👍🏽❤️\u{200b} 👩‍💻 🇨🇳 🧑‍🚀 👩‍⚕️ 🏳️‍🌈 🇦🇧🇨🇩 👍🏽"
+                        .repeat(5)
+                        .chars()
+                        .collect();
+                    for chunk in text.chunks(chunk_size) {
+                        let run: String = chunk.iter().collect();
+                        batch.input_unicode(&run);
+                        for &c in chunk {
+                            scalar.input(c);
+                        }
+                    }
+                    assert_eq!(
+                        batch.grid.cursor, scalar.grid.cursor,
+                        "columns={columns} prefix={prefix:?} chunks={chunk_size}"
+                    );
+                    assert_eq!(batch.history_size(), scalar.history_size());
+                    for line in -(batch.history_size() as i32)..4 {
+                        for column in 0..columns {
+                            let point = Point::new(Line(line), Column(column));
+                            assert_eq!(
+                                batch.grid[point], scalar.grid[point],
+                                "columns={columns} prefix={prefix:?} point={point:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn short_unicode_runs_only_occupy_the_cells_they_write() {
+        let mut term = Term::new(Config::default(), &TermSize::new(120, 4), VoidListener);
+        term.input_unicode("中文");
+        assert_eq!(term.grid[Line(0)].occ, 4);
+        term.input_ascii(b" ");
+        term.input_unicode("한");
+        assert_eq!(term.grid[Line(0)].occ, 7);
+        term.goto(0, 0);
+        term.input_unicode("日");
+        // Repairing an existing wide pair must preserve previous occupancy.
+        assert_eq!(term.grid[Line(0)].occ, 7);
+    }
 
     #[test]
     fn scroll_display_page_up() {

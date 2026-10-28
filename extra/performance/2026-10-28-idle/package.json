@@ -1,0 +1,53 @@
+{
+  "binaries": {
+    "candidate": {
+      "path": "/Users/zilliz/workspace/alacritty/target/performance-idle-20261028/Alacritty.app/Contents/MacOS/alacritty",
+      "sha256": "40c97770fd73b4e3007f11384795cbbb6e64112f37d874b44997bbfd32e7dbe0"
+    },
+    "installed_baseline": {
+      "path": "/Users/zilliz/workspace/alacritty/target/performance-shortfalls-20261028/Alacritty.app/Contents/MacOS/alacritty",
+      "sha256": "dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e"
+    },
+    "ghostty": {
+      "path": "/private/tmp/alacritty-ghostty-perf/Ghostty.app/Contents/MacOS/ghostty",
+      "sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b"
+    }
+  },
+  "source_sha256": {
+    "Cargo.lock": "436f991523ead7d4080ae60715cddc477463192044169ee2c5068e37aa14b20b",
+    "Cargo.toml": "387bdafbc503b58dae2a2a8c877308bbfeb257f95c6c86351aae2b93c5d88dc5",
+    "alacritty/src/event.rs": "d9bf7d395a78ba483cca257aa95791693a0865f1195a272f4ea2faac2d65aff7",
+    "alacritty/src/renderer/text/atlas.rs": "6d9c6e866a7443d86d24f589738f32ee52d797f019bc139d5207c757e3d73a4b",
+    "alacritty/src/renderer/text/gles2.rs": "2a4e94ebcdb3ff17c71127d7ac8f1a1060a1eaad11ee966e284f25790c8973d3",
+    "alacritty/src/renderer/text/glsl3.rs": "089d4c9c451142d0435da1e7c3c9a7271b3abaf61828ce190d8a1e9189292f3e",
+    "alacritty/src/window_context.rs": "285bd8afe327f59efe0ab300be4907654d7a8c123e19287b6cb8a5795cc49995",
+    "alacritty_terminal/Cargo.toml": "8efda20b4472b5091b4150e1acce5e6e6ccdc54320a6f50b6109ac9b36d815ed",
+    "alacritty_terminal/examples/history-performance.rs": "528007ece06a9dec77eedacfcb98043dde8d6bdd1843713f944fc96972213996",
+    "alacritty_terminal/src/event.rs": "3ebab87628a840b4e01b25b9b69a1f70e0f4d06374854bfbadbf964eb2bf6425",
+    "alacritty_terminal/src/event_loop.rs": "0b2aa6bfc642f7b2cd59fd68eaa13628051b75eeb4a123c239e43011d40f33df",
+    "alacritty_terminal/src/grid/compact.rs": "8901902771dae5e4f107d159097152803d8531cdc92e8af66b87d6e6b8703da1",
+    "alacritty_terminal/src/grid/mod.rs": "a30e5ca20441ae9f66a56f0a5f402f2135d47d58fd8b14396fb20f6a13bcc7bb",
+    "alacritty_terminal/src/grid/row.rs": "bd487310a88f95b9b74105d3c613ca7e78a72d8bda75984460670e2f7fd2f3c9",
+    "alacritty_terminal/src/grid/storage.rs": "4a27abf8a0eb4cdabd130141c568694eabe52632c037283209375281cdb484fc",
+    "alacritty_terminal/src/term/cell.rs": "ca730d3ad3ed29e8aea047a486e0158b58a8dd6a2eb328cba7033c1853af779a",
+    "alacritty_terminal/src/term/grapheme.rs": "144613dd95282d873c77d41df11db4f37d77b300927b69174a96657fed4e36b4",
+    "alacritty_terminal/src/term/mod.rs": "6bdf82604ea7d5e7264c72756895f5f8a8e06944e98423f15184a43ab83231e4",
+    "alacritty_terminal/src/thread.rs": "6c7231fb981bf811cb6c5426de96e0c468210e09c8f7f9f96acbb2ed722a3741",
+    "alacritty_terminal/src/tty/mod.rs": "1d0a76d806d5733f196165bbebe2ec973d378dee8a040fbc1cb29308a3ed63b0",
+    "alacritty_terminal/src/tty/read_pipeline.rs": "eb5dec59576c48a05075d4d5d53dc903d9cda9d63d3c5e4e4fad22991191b4f4",
+    "alacritty_terminal/src/tty/unix.rs": "ad087f95846799a71a93dcd1ce20f7ca6537615293469ee7df23b37ee75580b9",
+    "extra/compare-terminal-performance.py": "2a14db11eac8ae983e00fc8560265a62d198e3f37edbfb738b6b71d752410e25",
+    "extra/compare-terminal-resources.py": "f62a160c42af46da6141c4d9ac38fc02f7b7749d44548f9c5d5914c3d04f7331",
+    "extra/frame-pacing-acceptance.py": "a8a2551ecf61d52ac2adc3d6c72db622c2e276925adba1faaa093a92b6058b2d",
+    "extra/render-acceptance.py": "7f08b8b0212a0ae78e5fe9548f408e7500ba03dc23601eca0cb1c0c3047a8718",
+    "extra/terminal-benchmark-background.m": "179e50eeb60cbdf83ec556bab82cc1b42aeae90ded38a36e80ce275e6080e237"
+  },
+  "ghostty_source_revision": "83fb95624b0439ee660c2679b43b38c8b63769cd",
+  "git_head": "ef3579b37531e67f925fb5e4c1d196f1bca148f7",
+  "background_library_sha256": "d20a853b016857aeba9351463b748c99abca57e1aabed3c9993eaae62d854ebf",
+  "validation": {
+    "workspace_tests_passed": 347,
+    "ignored": 5,
+    "native_and_memory_acceptance": "passed"
+  }
+}

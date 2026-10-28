@@ -10,16 +10,40 @@ use crate::index::{Column, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
 use crate::vte::ansi::{CharsetIndex, StandardCharset};
 
+mod compact;
 pub mod resize;
 mod row;
 mod storage;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use self::compact::CompactBlock;
+pub use self::compact::CompactRow;
+pub use self::compact::PackedRow;
 pub use self::row::Row;
 use self::storage::Storage;
 
 pub trait GridCell: Sized {
+    /// Cheap history encoding used while output is active, without compression.
+    fn pack_rows(_rows: &[&[Self]]) -> Option<Vec<PackedRow<Self>>> {
+        None
+    }
+
+    /// Reuse a packed row's allocation when its representation permits reset.
+    fn reset_packed(_row: &mut PackedRow<Self>, _template: &Self) -> bool {
+        false
+    }
+
+    /// Encode several rows together to amortize compression and allocation.
+    fn compact_rows(_rows: &[&[Self]]) -> Option<Vec<CompactRow<Self>>> {
+        None
+    }
+
+    /// Losslessly encode a cold row, or keep it resident if compression is not useful.
+    fn compact_row(_cells: &[Self]) -> Option<CompactRow<Self>> {
+        None
+    }
+
     /// Check if the cell contains any content.
     fn is_empty(&self) -> bool;
 
@@ -135,13 +159,97 @@ pub struct Grid<T> {
 
     /// Maximum number of lines in history.
     max_scroll_limit: usize,
+
+    /// Recently archived rows waiting for a small packing batch.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pack_pending: usize,
 }
 
 impl<T: GridCell + Default + PartialEq> Grid<T> {
+    fn pack_scrolled_history(&mut self, positions: usize) {
+        const HOT_ROWS: usize = 256;
+        self.pack_pending =
+            (self.pack_pending + positions).min(self.history_size().saturating_sub(HOT_ROWS));
+        let visible_start = -(self.display_offset as i32);
+        let visible_end = visible_start + self.lines as i32;
+        while self.pack_pending >= 16 {
+            let start = -((HOT_ROWS + self.pack_pending) as i32);
+            self.pack_pending -= 16;
+            let lines: smallvec::SmallVec<[Line; 16]> = (start..start + 16)
+                .filter(|&line| line < visible_start || line >= visible_end)
+                .map(Line)
+                .filter(|&line| self.raw[line].is_dense())
+                .collect();
+            let rows: smallvec::SmallVec<[&[T]; 16]> =
+                lines.iter().map(|&line| &self.raw[line][..]).collect();
+            let packed = T::pack_rows(&rows);
+            drop(rows);
+            if let Some(packed) = packed {
+                assert_eq!(packed.len(), lines.len());
+                for (line, row) in lines.into_iter().zip(packed) {
+                    self.raw[line].set_packed(row);
+                }
+            } else {
+                // A block can span different styles even when each row has a
+                // uniform style. Such rows can still use the cheap encoding.
+                for line in lines {
+                    if let Some(mut rows) = T::pack_rows(&[&self.raw[line][..]]) {
+                        self.raw[line].set_packed(rows.pop().unwrap());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Compress a bounded portion of history outside the current viewport.
+    /// Reset the scan after activity since scroll/resize can change row positions.
+    pub fn compact_history(&mut self, cursor: &mut usize) -> bool {
+        if *cursor == 0 {
+            self.raw.trim_idle_cache();
+        }
+        let history = self.history_size();
+        let end = (*cursor + 256).min(history.saturating_sub(256));
+        let visible_start = -(self.display_offset as i32);
+        let visible_end = visible_start + self.lines as i32;
+        let started = std::time::Instant::now();
+        while *cursor < end {
+            let mut lines = smallvec::SmallVec::<[Line; 16]>::new();
+            while *cursor < end && lines.len() < 16 {
+                let line = *cursor as i32 - history as i32;
+                if line < visible_start || line >= visible_end {
+                    let row = &mut self.raw[Line(line)];
+                    if !row.is_cold_compact() {
+                        lines.push(Line(line));
+                    }
+                }
+                *cursor += 1;
+            }
+            let rows: smallvec::SmallVec<[&[T]; 16]> =
+                lines.iter().map(|&line| &self.raw[line][..]).collect();
+            let encoded = T::compact_rows(&rows);
+            drop(rows);
+            if let Some(encoded) = encoded {
+                assert_eq!(encoded.len(), lines.len());
+                for (line, row) in lines.into_iter().zip(encoded) {
+                    self.raw[line].set_compact(row);
+                }
+            } else {
+                for line in lines {
+                    self.raw[line].compact();
+                }
+            }
+            if started.elapsed() >= std::time::Duration::from_millis(2) {
+                break;
+            }
+        }
+        *cursor < history.saturating_sub(256)
+    }
+
     pub fn new(lines: usize, columns: usize, max_scroll_limit: usize) -> Grid<T> {
         Grid {
             raw: Storage::with_capacity(lines, columns),
             max_scroll_limit,
+            pack_pending: 0,
             display_offset: 0,
             saved_cursor: Cursor::default(),
             cursor: Cursor::default(),
@@ -303,6 +411,9 @@ impl<T: GridCell + Default + PartialEq> Grid<T> {
         // Ensure all new lines are fully cleared.
         for i in (region.end.0 - positions as i32..region.end.0).map(Line::from) {
             self.raw[i].reset(&self.cursor.template);
+        }
+        if region.start == 0 {
+            self.pack_scrolled_history(positions);
         }
     }
 

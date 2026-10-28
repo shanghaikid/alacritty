@@ -63,6 +63,7 @@ def child(ready):
         "中文宽字符、标点；日本語と한글。",
         "Combining marks: e\u0301 a\u0308 n\u0303 e\u0301\u0302",
         "Emoji: 😀 🚀 ✅ 🧪",
+        "Graphemes: 👩‍💻 🧑‍🚀 🇨🇳 🇺🇸 👍🏽 ❤️ e\u0301\u0302",
         "\x1b]8;id=example;https://example.com\x1b\\OSC 8 hyperlink with combining e\u0301\x1b]8;;\x1b\\",
         "\x1b[4;58;5;2mColored underline: abc 中文 e\u0301\x1b[0m",
         "\x1b[1mBold\x1b[0m \x1b[3mItalic\x1b[0m \x1b[1;3mBold italic\x1b[0m",
@@ -72,6 +73,9 @@ def child(ready):
         "└──────────────┴───────────┘",
         "https://example.com/regular-url",
     ]
+    # Exercise growth beyond the initial 1,024-instance GPU buffer while
+    # keeping all the style/Unicode fixtures visible in the 24-line window.
+    lines.extend(f"{row:02} " + "0123456789abcdefghijklmnopqrstuvwxyz" * 2 for row in range(10))
     os.write(1, ("\x1b[?25l\x1b[2J\x1b[H" + "\r\n".join(lines)).encode())
     Path(ready).touch()
     time.sleep(60)
@@ -98,6 +102,7 @@ def main(before, after, destination):
                 process = subprocess.Popen([
                     str(Path(binary).resolve()), "--config-file", "/dev/null",
                     "--title", "Render acceptance", "-o", 'window.startup_mode="Windowed"',
+                    "-o", 'keyboard.global_hotkey.enabled=false',
                     "-o", 'window.decorations="None"', "-o", 'window.position={x=80,y=80}',
                     "-o", 'window.dimensions={columns=80,lines=24}',
                     "-o", 'window.padding={x=0,y=0}', "-o", 'window.dynamic_padding=false',

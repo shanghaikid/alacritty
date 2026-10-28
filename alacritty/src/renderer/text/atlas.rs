@@ -11,6 +11,10 @@ use super::Glyph;
 /// Size of the Atlas.
 pub const ATLAS_SIZE: i32 = 1024;
 
+/// Most terminal windows need only a small glyph working set. Allocate one
+/// smaller texture initially; additional atlases retain the normal capacity.
+pub const INITIAL_ATLAS_SIZE: i32 = 512;
+
 /// Manages a single texture atlas.
 ///
 /// The strategy for filling an atlas looks roughly like this:
@@ -122,6 +126,11 @@ impl Atlas {
         active_tex: &mut u32,
     ) -> Result<Glyph, AtlasInsertError> {
         if glyph.width > self.width || glyph.height > self.height {
+            if glyph.width <= ATLAS_SIZE && glyph.height <= ATLAS_SIZE {
+                // A glyph which outgrows the initial atlas can still fit in a
+                // normal overflow atlas (for example after increasing font size).
+                return Err(AtlasInsertError::Full);
+            }
             return Err(AtlasInsertError::GlyphTooLarge);
         }
 
@@ -300,5 +309,42 @@ impl Drop for Atlas {
         unsafe {
             gl::DeleteTextures(1, &self.id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::mem::ManuallyDrop;
+
+    use super::*;
+
+    #[test]
+    fn oversized_initial_glyph_uses_a_standard_atlas() {
+        // Both cases return before any GL call. No context/texture is created.
+        let mut atlas = ManuallyDrop::new(Atlas {
+            id: 0,
+            width: INITIAL_ATLAS_SIZE,
+            height: INITIAL_ATLAS_SIZE,
+            row_extent: 0,
+            row_baseline: 0,
+            row_tallest: 0,
+            is_gles_context: false,
+        });
+        let mut glyph = RasterizedGlyph {
+            character: 'W',
+            width: INITIAL_ATLAS_SIZE + 1,
+            height: 32,
+            top: 0,
+            left: 0,
+            advance: (0, 0),
+            buffer: BitmapBuffer::Rgb(Vec::new()),
+        };
+        let mut active_tex = 0;
+        assert!(matches!(atlas.insert(&glyph, &mut active_tex), Err(AtlasInsertError::Full)));
+        glyph.width = ATLAS_SIZE + 1;
+        assert!(matches!(
+            atlas.insert(&glyph, &mut active_tex),
+            Err(AtlasInsertError::GlyphTooLarge)
+        ));
     }
 }

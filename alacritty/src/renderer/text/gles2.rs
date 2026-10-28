@@ -13,7 +13,7 @@ use crate::gl::types::*;
 use crate::renderer::shader::{ShaderProgram, ShaderVersion};
 use crate::renderer::{Error, GlExtensions};
 
-use super::atlas::{ATLAS_SIZE, Atlas};
+use super::atlas::{Atlas, INITIAL_ATLAS_SIZE};
 use super::{
     Glyph, LoadGlyph, LoaderApi, RenderingGlyphFlags, RenderingPass, TextRenderApi,
     TextRenderBatch, TextRenderer, TextShader, glsl3,
@@ -149,7 +149,7 @@ impl Gles2Renderer {
             vao,
             vbo,
             ebo,
-            atlas: vec![Atlas::new(ATLAS_SIZE, is_gles_context)],
+            atlas: vec![Atlas::new(INITIAL_ATLAS_SIZE, is_gles_context)],
             batch: Batch::new(),
             current_atlas: 0,
             active_tex: 0,

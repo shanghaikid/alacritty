@@ -88,6 +88,9 @@ impl Debug for Event {
 
 /// Byte sequences are sent to a `Notify` in response to some events.
 pub trait Notify {
+    /// Schedule idle maintenance after reading or scrolling through history.
+    fn compact_history(&self) {}
+
     /// Notify that an escape sequence should be written to the PTY.
     ///
     /// TODO this needs to be able to error somehow.

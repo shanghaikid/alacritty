@@ -1,0 +1,290 @@
+[
+  {
+    "history_limit": 100000,
+    "terminal_pid": 87354,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 68.03399658203125,
+      "resident_mib": 80.8125,
+      "cpu_seconds": 0.18332670833333334,
+      "idle_wakes": 1,
+      "interrupt_wakes": 12
+    },
+    "history_fill_seconds": 0.0951369171962142,
+    "history_active": {
+      "footprint_mib": 153.69073486328125,
+      "resident_mib": 159.328125,
+      "cpu_seconds": 0.34537708333333333,
+      "idle_wakes": 1,
+      "interrupt_wakes": 16
+    },
+    "history_idle": {
+      "footprint_mib": 86.23760986328125,
+      "resident_mib": 137.578125,
+      "cpu_seconds": 0.5895089166666666,
+      "idle_wakes": 44,
+      "interrupt_wakes": 413
+    },
+    "idle": {
+      "seconds": 3.002421791665256,
+      "cpu_percent_one_core": 0.012141587423817119,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 77.018798828125,
+      "resident_mib": 125.84375,
+      "cpu_seconds": 0.60096175,
+      "idle_wakes": 45,
+      "interrupt_wakes": 418
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 0,
+    "binary_sha256": "dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e",
+    "sampled_peak_footprint_mib": 153.78448486328125,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 87536,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 62.1279296875,
+      "resident_mib": 107.875,
+      "cpu_seconds": 0.24995425,
+      "idle_wakes": 11,
+      "interrupt_wakes": 124
+    },
+    "history_fill_seconds": 0.08620012504979968,
+    "history_active": {
+      "footprint_mib": 164.40924072265625,
+      "resident_mib": 209.640625,
+      "cpu_seconds": 0.42746433333333334,
+      "idle_wakes": 11,
+      "interrupt_wakes": 136
+    },
+    "history_idle": {
+      "footprint_mib": 71.22174072265625,
+      "resident_mib": 214.5,
+      "cpu_seconds": 0.5038883333333333,
+      "idle_wakes": 197,
+      "interrupt_wakes": 1099
+    },
+    "idle": {
+      "seconds": 3.0051330840215087,
+      "cpu_percent_one_core": 0.4196902315927424,
+      "wakeups_per_second": 1.3310558594786581
+    },
+    "cleared_idle": {
+      "footprint_mib": 71.19049072265625,
+      "resident_mib": 214.46875,
+      "cpu_seconds": 0.538172125,
+      "idle_wakes": 207,
+      "interrupt_wakes": 1199
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 0,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 164.40924072265625,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 87721,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.1590576171875,
+      "resident_mib": 107.03125,
+      "cpu_seconds": 0.22108808333333335,
+      "idle_wakes": 3,
+      "interrupt_wakes": 160
+    },
+    "history_fill_seconds": 0.09481720812618732,
+    "history_active": {
+      "footprint_mib": 163.8466796875,
+      "resident_mib": 209.1875,
+      "cpu_seconds": 0.4149742083333333,
+      "idle_wakes": 3,
+      "interrupt_wakes": 172
+    },
+    "history_idle": {
+      "footprint_mib": 70.9560546875,
+      "resident_mib": 214.34375,
+      "cpu_seconds": 0.4917897916666667,
+      "idle_wakes": 139,
+      "interrupt_wakes": 1206
+    },
+    "idle": {
+      "seconds": 3.0039447504095733,
+      "cpu_percent_one_core": 0.36470100407715367,
+      "wakeups_per_second": 0.9986868099324945
+    },
+    "cleared_idle": {
+      "footprint_mib": 70.9560546875,
+      "resident_mib": 214.34375,
+      "cpu_seconds": 0.53232625,
+      "idle_wakes": 144,
+      "interrupt_wakes": 1301
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 1,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 163.8466796875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 87895,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 66.2841796875,
+      "resident_mib": 80.546875,
+      "cpu_seconds": 0.17460779166666665,
+      "idle_wakes": 0,
+      "interrupt_wakes": 17
+    },
+    "history_fill_seconds": 0.07753904210403562,
+    "history_active": {
+      "footprint_mib": 153.6907958984375,
+      "resident_mib": 158.9375,
+      "cpu_seconds": 0.30071458333333334,
+      "idle_wakes": 0,
+      "interrupt_wakes": 19
+    },
+    "history_idle": {
+      "footprint_mib": 86.2532958984375,
+      "resident_mib": 136.375,
+      "cpu_seconds": 0.486811375,
+      "idle_wakes": 6,
+      "interrupt_wakes": 419
+    },
+    "idle": {
+      "seconds": 3.0080323750153184,
+      "cpu_percent_one_core": 0.015918490017278446,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 77.1907958984375,
+      "resident_mib": 125.734375,
+      "cpu_seconds": 0.499683375,
+      "idle_wakes": 6,
+      "interrupt_wakes": 423
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 1,
+    "binary_sha256": "dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e",
+    "sampled_peak_footprint_mib": 153.6907958984375,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 88078,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 60.096435546875,
+      "resident_mib": 81.953125,
+      "cpu_seconds": 0.26872779166666666,
+      "idle_wakes": 1,
+      "interrupt_wakes": 20
+    },
+    "history_fill_seconds": 0.09718525037169456,
+    "history_active": {
+      "footprint_mib": 132.12811279296875,
+      "resident_mib": 153.90625,
+      "cpu_seconds": 0.4109972916666667,
+      "idle_wakes": 1,
+      "interrupt_wakes": 20
+    },
+    "history_idle": {
+      "footprint_mib": 70.11248779296875,
+      "resident_mib": 127.421875,
+      "cpu_seconds": 0.6686268333333334,
+      "idle_wakes": 35,
+      "interrupt_wakes": 418
+    },
+    "idle": {
+      "seconds": 3.0054855421185493,
+      "cpu_percent_one_core": 0.020490310956517283,
+      "wakeups_per_second": 0.3327249411072215
+    },
+    "cleared_idle": {
+      "footprint_mib": 62.45623779296875,
+      "resident_mib": 121.984375,
+      "cpu_seconds": 0.6875049166666666,
+      "idle_wakes": 37,
+      "interrupt_wakes": 425
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 2,
+    "binary_sha256": "dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e",
+    "sampled_peak_footprint_mib": 132.14373779296875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "terminal_pid": 88281,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 65.9716796875,
+      "resident_mib": 107.421875,
+      "cpu_seconds": 0.23995954166666666,
+      "idle_wakes": 4,
+      "interrupt_wakes": 104
+    },
+    "history_fill_seconds": 0.09599408321082592,
+    "history_active": {
+      "footprint_mib": 167.6124267578125,
+      "resident_mib": 208.53125,
+      "cpu_seconds": 0.43460975,
+      "idle_wakes": 4,
+      "interrupt_wakes": 127
+    },
+    "history_idle": {
+      "footprint_mib": 74.86248779296875,
+      "resident_mib": 213.921875,
+      "cpu_seconds": 0.5784636666666666,
+      "idle_wakes": 174,
+      "interrupt_wakes": 904
+    },
+    "idle": {
+      "seconds": 3.0031353342346847,
+      "cpu_percent_one_core": 3.584424710164857,
+      "wakeups_per_second": 1.3319413062746155
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.784423828125,
+      "resident_mib": 215.296875,
+      "cpu_seconds": 0.717864875,
+      "idle_wakes": 179,
+      "interrupt_wakes": 969
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 2,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 167.6436767578125,
+    "sampling_interval_seconds": 0.01
+  }
+]

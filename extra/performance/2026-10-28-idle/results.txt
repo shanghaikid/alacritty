@@ -1,0 +1,168 @@
+Alacritty idle memory — 2026-10-28
+
+Purpose
+Bring idle footprint close to Ghostty 1.4.0 while preserving terminal semantics.
+This continues the earlier locally installed optimized Alacritty, not upstream
+Alacritty. The implementation remains an uncommitted working-tree change.
+
+Implementation
+- Inline compressed row descriptors (u32 offset/length) reference one shared
+  compressed block and expansion cache for up to 16 rows. Row<Cell> is 32 bytes,
+  CompactRow<Cell> is 16 bytes, Cell remains 24 bytes.
+- Grapheme tails are encoded in the LZ4 stream instead of retained as per-cell
+  style dictionary entries. Explicit empty extras, long tails, underline colors,
+  hyperlinks, wrap/wide flags and immutable snapshots remain lossless.
+- Idle maintenance keeps only 64 cached spare rows and replaces an oversized
+  row-vector allocation; Darwin realloc/shrink_to had retained its physical pages.
+  A completed idle pass asks the allocator to release unused pages even for an
+  empty or cleared history. Maintenance remains activity-driven, not periodic.
+- The first glyph atlas is 512 square; later atlases retain 1024. An oversized
+  initial glyph falls back to the regular atlas. GLSL3 CPU/GPU instance buffers
+  start at 1024 and grow on demand; maximum batch size remains 65536.
+- Active uniform scalar packing and the existing PTY pipeline are preserved.
+  Rows with arbitrary styles/grapheme extras can still remain dense while active.
+
+Source provenance
+Ghostty v1.4.0 was inspected from the local checkout at
+/Users/zilliz/workspace/ghostty, revision
+83fb95624b0439ee660c2679b43b38c8b63769cd.
+https://ghostty.org/docs/install/release-notes/1-4-0
+This adapts idle compression and allocation ideas to Alacritty's row/cell model;
+it is not a direct port. The existing VTE fork remains pinned to
+7cfdf88e709ab444ed9d69b6bd16c02d7c092839 without new changes in this iteration.
+
+Method and scope
+Apple M1 Pro, macOS 15.7.9, arm64 native apps; 120x40 cells, Menlo 11, grapheme
+mode enabled, equal line limits and unlimited Ghostty byte limit. Unique numbered
+history lines prevent an identical-line-only comparison; the varied Unicode
+corpus has 2048 deterministic rows, larger than the short grapheme cache.
+Darwin physical footprint includes the main terminal process, not the benchmark
+child. Empty, filled and cleared stages are measured after documented waits;
+idle/clear waits are 3 seconds. The parent samples peaks every 10 ms, which is not
+an instantaneous high-water guarantee. Each final memory case uses three pairs
+with alternating order. No compilation or other native benchmark runs concurrently.
+
+The final comparisons load the same test-only Cocoa library into both processes.
+It suppresses activation and external keyboard/mouse input in the test windows;
+windows remain normal, ordered behind existing windows. This is a background
+comparison, not proof of equal foreground/occluded/hidden-tab behavior or GPU
+energy. The library is not bundled with or enabled in the delivered application.
+Foreground results and earlier launch-library results are retained separately,
+not pooled. Native pixel and input-latency acceptance runs do not use this shim.
+
+Validation
+347 workspace tests pass, including 45 reference fixtures; 5 intentionally ignored. No-default-features check passes. Workspace/all-targets
+Clippy passes with the two pre-existing warning categories documented in the
+previous report (question_mark and useless_borrows_in_formatting).
+Native 1040x696 render fixture: zero different pixels versus installed baseline.
+The fixture crosses the 1024-instance initial capacity to exercise GPU growth.
+240-frame scroll: 60.027 FPS, P95 interval 22.227 ms.
+100 local key-event to GPU-readback samples: median 3.439 ms, P95 6.514 ms.
+These are local test-window/GPU timings, not physical display/input latency.
+
+Tradeoffs and limits
+Compressed history must decode for search/reflow and can temporarily expand
+memory when read. Whole-block cache sharing reduces small allocations but expands
+up to 16 rows on first access. Idle work later recompresses expanded blocks.
+The style dictionary is bounded; unsupported high-style-entropy blocks retain
+lossless dense storage. Active styled/complex-Unicode memory is not claimed to
+match Ghostty. The matrices cover selected corpora on one desktop, not every
+possible history, font, renderer, OS, or window configuration.
+
+Rejected experiments and measurement corrections
+CGLReclaimResources crashed an isolated diagnostic app and was not adopted.
+GPU finish/swap limit, delayed allocator relief, opaque surface and vsync probes
+showed no consistent gain and were not adopted. Some foreground runs received
+unrelated keyboard input and were rejected. One background run also did, leading
+to the input-isolating shim. Incomplete runs are never pooled into complete pairs.
+The history microbenchmark was corrected after noticing Arc-shared cache warming
+between operations: every cold search, viewport sweep and reflow now prepares its
+own grid before timing. Earlier affected timings are explicitly supplemental.
+
+Reproduction
+Use a dedicated temporary CARGO_TARGET_DIR with an EXIT cleanup trap, preserving
+any requested deliverable before cleanup. Never retain Rust build caches.
+cargo test --locked --workspace
+cargo check --locked -p alacritty_terminal --no-default-features
+cargo clippy --locked --workspace --all-targets -- -D warnings --force-warn clippy::question_mark --force-warn clippy::useless_borrows_in_formatting
+cargo run --locked --release -p alacritty_terminal --example history-performance -- 100000
+clang -O2 -fobjc-arc -dynamiclib -framework AppKit extra/terminal-benchmark-background.m -o SHIM.dylib
+codesign --force --sign - SHIM.dylib
+For output-only comparisons set TERMINAL_BENCH_BACKGROUND_LIBRARY to absolute SHIM.dylib:
+python3 extra/compare-terminal-resources.py --alacritty NEW --ghostty GHOSTTY --config-directory extra/performance/2026-10-28-idle --output OUT --pairs 3 --corpus CORPUS --history 100000
+For ASCII omit --history to cover both 10k and 100k.
+python3 extra/compare-terminal-performance.py --alacritty NEW --baseline OLD --output OUT --pairs 3 --mib 64 --samples 5 --workload cjk
+Without the shim:
+python3 extra/render-acceptance.py OLD NEW RENDER_OUT
+python3 extra/frame-pacing-acceptance.py NEW CONFIG FRAMES_OUT
+
+Cold reflow now shares block expansion on mutable access as well as reads,
+avoiding one full decompression per row in the same block. The corrected
+100k-row cold reflow drops from roughly 0.51–0.54 s to 0.21–0.23 s.
+
+Final measured results (MiB, median of three process samples)
+Corpus/history             Alacritty [min,max]       Ghostty [min,max]       Difference
+ascii/10000                 59.83 [57.14,65.28]     61.96 [60.64,66.57]   -2.13 (-3.4%)
+ascii/100000                66.13 [62.49,71.07]     67.60 [67.00,77.17]   -1.47 (-2.2%)
+cjk/100000                  72.35 [71.78,72.57]     62.80 [62.46,67.22]   +9.55 (+15.2%)
+ansi/100000                 72.83 [72.75,74.89]     62.28 [62.13,64.72]   +10.55 (+16.9%)
+graphemes/100000            68.69 [62.60,71.05]    110.19 [106.91,110.94]   -41.50 (-37.7%)
+unicode_varied/100000      112.71 [98.94,115.11]    115.77 [115.63,125.66]   -3.06 (-2.6%)
+
+Other memory stages: Alacritty / Ghostty medians
+Corpus/history                 Empty       Active       Cleared    Idle CPU % (one core)
+ascii/10000                 61.72/66.19     87.44/77.55     56.11/66.44   0.016/0.013
+ascii/100000                61.30/65.21    137.55/168.00    59.80/72.03   0.005/0.096
+cjk/100000                  61.74/62.58    156.47/159.91    64.05/67.11   0.005/0.031
+ansi/100000                 60.89/64.97    359.57/161.89    65.80/64.66   0.047/0.022
+graphemes/100000            61.52/65.58    359.25/307.78    62.94/69.72   0.040/0.404
+unicode_varied/100000       61.55/65.55    375.24/248.22    78.33/93.03   0.003/0.130
+
+Throughput versus the previously installed optimized Alacritty (MiB/s)
+Three alternating pairs; three 8 MiB samples per workload/process.
+Workload                       New        Previous       Change
+ascii                          177.55       168.59      +5.31%
+ascii_wrapped                  162.15       164.45      -1.40%
+cjk                            156.46       135.83     +15.18%
+ansi_cjk                       121.23       120.37      +0.72%
+graphemes                       85.17        92.07      -7.49%
+osc_titles                      32.74        32.45      +0.88%
+hyperlinks                      88.06        90.17      -2.34%
+unicode_varied                  68.19        71.73      -4.93%
+
+Long CJK run (three pairs, five 64 MiB samples/process): 210.94 / 214.73 MiB/s (-1.76%).
+Short and long CJK results differ in direction; earlier candidates also showed
+substantial desktop variation. These samples do not establish a universal
+throughput advantage or absence of all regressions. In the final short run,
+graphemes and mixed Unicode were slower; all raw paired samples are retained.
+
+Cold history operations: fresh preparation for each operation, 100k rows.
+Search results and post-reflow character/flag/grapheme hashes match.
+Corpus/storage                  Search ms      Reflow ms     Page P95 ms
+ascii/dense                      117.240       131.535          0.013
+ascii/live                       161.922       173.302          0.024
+ascii/compressed                 210.290       218.340          0.039
+cjk/dense                        102.888       133.382          0.013
+cjk/live                         142.747       161.840          0.022
+cjk/compressed                   178.330       205.344          0.036
+graphemes/dense                  110.973       119.143          0.017
+graphemes/live                   108.723       109.568          0.016
+graphemes/compressed             225.671       231.114          0.051
+
+Delivery
+Candidate: target/performance-idle-20261028/Alacritty.app
+Executable SHA-256: 40c97770fd73b4e3007f11384795cbbb6e64112f37d874b44997bbfd32e7dbe0
+package.json records binary, source, and test-launch-library hashes.
+See installation.json for the installed path, previous version backup, and verification.
+See cleanup.json for task-owned artifact cleanup and retained deliverables.
+
+Remaining simple-text gap
+The final CJK and ANSI samples are 9.55 and 10.55 MiB above Ghostty, while
+ASCII, graphemes and varied Unicode are lower. This is comparable overall idle
+footprint across the selected cases, not a claim of winning every workload.
+A final isolated CJK profile reports 29.9 MiB in five IOSurface regions.
+Setting surface volatile state was rejected as an optimization: Apple Silicon
+logs that GLD_SET_SURFACE_VOLATILE_STATE is unsupported/not handled, and the
+physical footprint and IOSurface allocation remain unchanged. This probe was
+not adopted in production. Profiling measurements are diagnostic, not pooled
+into the uninstrumented memory table.

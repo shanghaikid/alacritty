@@ -9,7 +9,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use log::error;
 use polling::{Event as PollingEvent, Events, PollMode, Poller};
@@ -26,9 +26,25 @@ pub(crate) const READ_BUFFER_SIZE: usize = 0x10_0000;
 /// Max bytes to read from the PTY while the terminal is locked.
 const MAX_LOCKED_READ: usize = u16::MAX as usize;
 
+/// Drain queued output without letting a descendant that keeps writing prevent
+/// shutdown forever. The budget exceeds the PTY/read-ahead queues; it is checked
+/// after each bounded parser read, so the final read may cross the budget.
+fn drain_queued_output(mut read: impl FnMut() -> io::Result<usize>) {
+    let mut remaining = 16 * READ_BUFFER_SIZE;
+    while remaining != 0 {
+        match read() {
+            Ok(0) | Err(_) => break,
+            Ok(count) => remaining = remaining.saturating_sub(count),
+        }
+    }
+}
+
 /// Messages that may be sent to the `EventLoop`.
 #[derive(Debug)]
 pub enum Msg {
+    /// A UI history operation may have restored cold rows.
+    CompactHistory,
+
     /// Data that should be written to the PTY.
     Input(Cow<'static, [u8]>),
 
@@ -90,7 +106,9 @@ where
     /// Returns `false` when a shutdown message was received.
     fn drain_recv_channel(&mut self, state: &mut State) -> bool {
         while let Some(msg) = self.rx.recv() {
+            state.schedule_compaction();
             match msg {
+                Msg::CompactHistory => (),
                 Msg::Input(input) => state.write_list.push_back(input),
                 Msg::Resize(window_size) => self.pty.on_resize(window_size),
                 Msg::Shutdown => return false,
@@ -106,7 +124,7 @@ where
         state: &mut State,
         buf: &mut [u8],
         mut writer: Option<&mut X>,
-    ) -> io::Result<()>
+    ) -> io::Result<usize>
     where
         X: Write,
     {
@@ -167,13 +185,16 @@ where
         if let Some(terminal) = &mut terminal {
             terminal.flush_program_status();
         }
+        if processed != 0 {
+            state.schedule_compaction();
+        }
 
         // Queue terminal redraw unless all processed bytes were synchronized.
         if grid_activity && state.parser.sync_bytes_count() < processed && processed > 0 {
             self.event_proxy.send_event(Event::Wakeup);
         }
 
-        Ok(())
+        Ok(processed)
     }
 
     #[inline]
@@ -210,6 +231,8 @@ where
 
     pub fn spawn(mut self) -> JoinHandle<(Self, State)> {
         thread::spawn_named("PTY reader", move || {
+            #[cfg(target_os = "macos")]
+            thread::prioritize_terminal_io();
             let mut state = State::default();
             let mut buf = [0u8; READ_BUFFER_SIZE];
 
@@ -233,8 +256,12 @@ where
             'event_loop: loop {
                 // Wakeup the event loop when a synchronized update timeout was reached.
                 let handler = state.parser.sync_timeout();
-                let timeout =
-                    handler.sync_timeout().map(|st| st.saturating_duration_since(Instant::now()));
+                let timeout = handler
+                    .sync_timeout()
+                    .into_iter()
+                    .chain(state.compact_at)
+                    .min()
+                    .map(|at| at.saturating_duration_since(Instant::now()));
 
                 events.clear();
                 if let Err(err) = self.poll.wait(&mut events, timeout) {
@@ -249,6 +276,22 @@ where
 
                 // Handle synchronized update timeout.
                 if events.is_empty() && self.rx.peek().is_none() {
+                    let now = Instant::now();
+                    if state.compact_at.is_some_and(|at| now >= at) {
+                        let more = self
+                            .terminal
+                            .lock()
+                            .grid_mut()
+                            .compact_history(&mut state.compact_cursor);
+                        state.compact_at = more.then(|| Instant::now() + Duration::from_millis(1));
+                        #[cfg(target_os = "macos")]
+                        if !more {
+                            release_allocator_pages();
+                        }
+                    }
+                    if !state.parser.sync_timeout().sync_timeout().is_some_and(|at| now >= at) {
+                        continue;
+                    }
                     {
                         let mut terminal = self.terminal.lock();
                         state.parser.stop_sync(&mut *terminal);
@@ -273,7 +316,10 @@ where
                                     self.event_proxy.send_event(Event::ChildExit(status));
                                 }
                                 if self.drain_on_exit {
-                                    let _ = self.pty_read(&mut state, &mut buf, pipe.as_mut());
+                                    self.pty.begin_drain();
+                                    drain_queued_output(|| {
+                                        self.pty_read(&mut state, &mut buf, pipe.as_mut())
+                                    });
                                 }
                                 self.terminal.lock().exit();
                                 self.event_proxy.send_event(Event::Wakeup);
@@ -334,6 +380,39 @@ where
     }
 }
 
+#[cfg(test)]
+mod drain_tests {
+    use super::*;
+
+    #[test]
+    fn drains_multiple_queued_reads_until_empty_or_error() {
+        for fail in [false, true] {
+            let mut calls = 0;
+            drain_queued_output(|| {
+                calls += 1;
+                match calls {
+                    1..=4 => Ok(MAX_LOCKED_READ),
+                    5 if fail => Err(io::Error::other("closed PTY")),
+                    5 => Ok(0),
+                    _ => panic!("read after terminal result"),
+                }
+            });
+            assert_eq!(calls, 5);
+        }
+    }
+
+    #[test]
+    fn continuously_writing_descendant_cannot_keep_exit_drain_alive() {
+        let mut calls = 0;
+        drain_queued_output(|| {
+            calls += 1;
+            assert!(calls < 1024, "unbounded reads from a live descendant");
+            Ok(MAX_LOCKED_READ)
+        });
+        assert!(calls > 1, "must still drain more than one parser batch");
+    }
+}
+
 /// Helper type which tracks how much of a buffer has been written.
 struct Writing {
     source: Cow<'static, [u8]>,
@@ -343,6 +422,10 @@ struct Writing {
 pub struct Notifier(pub EventLoopSender);
 
 impl event::Notify for Notifier {
+    fn compact_history(&self) {
+        let _ = self.0.send(Msg::CompactHistory);
+    }
+
     fn notify<B>(&self, bytes: B)
     where
         B: Into<Cow<'static, [u8]>>,
@@ -354,6 +437,20 @@ impl event::Notify for Notifier {
         }
 
         let _ = self.0.send(Msg::Input(bytes));
+    }
+}
+
+/// Returning many cold row allocations does not necessarily return their
+/// pages to the OS. Ask Darwin's allocator to release unused pages once the
+/// idle pass finishes, outside the terminal lock.
+#[cfg(target_os = "macos")]
+fn release_allocator_pages() {
+    unsafe extern "C" {
+        fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+    }
+    // NULL selects all zones; zero requests release of all reclaimable pages.
+    unsafe {
+        malloc_zone_pressure_relief(std::ptr::null_mut(), 0);
     }
 }
 
@@ -390,7 +487,7 @@ impl std::error::Error for EventLoopSendError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EventLoopSender {
     sender: Sender<Msg>,
     poller: Arc<Poller>,
@@ -412,9 +509,16 @@ pub struct State {
     write_list: VecDeque<Cow<'static, [u8]>>,
     writing: Option<Writing>,
     parser: ansi::Processor,
+    compact_at: Option<Instant>,
+    compact_cursor: usize,
 }
 
 impl State {
+    fn schedule_compaction(&mut self) {
+        self.compact_cursor = 0;
+        self.compact_at = Some(Instant::now() + Duration::from_millis(200));
+    }
+
     #[inline]
     fn ensure_next(&mut self) {
         if self.writing.is_none() {

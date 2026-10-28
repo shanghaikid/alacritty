@@ -1,6 +1,5 @@
 use std::cmp::max;
 use std::mem;
-use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
 
 #[cfg(feature = "serde")]
@@ -121,6 +120,25 @@ impl<T> Storage<T> {
         self.inner.truncate(self.len);
     }
 
+    /// Retain a small refill reserve while idle, not a thousand allocated rows
+    /// or the capacity of history which has since been cleared.
+    pub fn trim_idle_cache(&mut self) {
+        const IDLE_CACHE_SIZE: usize = 64;
+        let target = self.len.saturating_add(IDLE_CACHE_SIZE);
+        if self.inner.len() > target {
+            self.rezero();
+            self.inner.truncate(target);
+        }
+        if self.inner.capacity() > target.saturating_add(MAX_CACHE_SIZE) {
+            // realloc may keep a large physical allocation when asked to
+            // shrink it. Moving the rows once while idle actually releases
+            // that history-sized allocation, including after history clear.
+            let mut compact = Vec::with_capacity(target);
+            compact.append(&mut self.inner);
+            self.inner = compact;
+        }
+    }
+
     /// Dynamically grow the storage buffer at runtime.
     #[inline]
     pub fn initialize(&mut self, additional_rows: usize, columns: usize)
@@ -142,37 +160,11 @@ impl<T> Storage<T> {
         self.len
     }
 
-    /// Swap implementation for Row<T>.
-    ///
-    /// Exploits the known size of Row<T> to produce a slightly more efficient
-    /// swap than going through slice::swap.
-    ///
-    /// The default implementation from swap generates 8 movups and 4 movaps
-    /// instructions. This implementation achieves the swap in only 8 movups
-    /// instructions.
+    /// Swap rows without assuming the layout of their backing storage.
     pub fn swap(&mut self, a: Line, b: Line) {
-        debug_assert_eq!(mem::size_of::<Row<T>>(), mem::size_of::<usize>() * 4);
-
         let a = self.compute_index(a);
         let b = self.compute_index(b);
-
-        unsafe {
-            // Cast to a qword array to opt out of copy restrictions and avoid
-            // drop hazards. Byte array is no good here since for whatever
-            // reason LLVM won't optimized it.
-            let a_ptr = self.inner.as_mut_ptr().add(a) as *mut MaybeUninit<usize>;
-            let b_ptr = self.inner.as_mut_ptr().add(b) as *mut MaybeUninit<usize>;
-
-            // Copy 1 qword at a time.
-            //
-            // The optimizer unrolls this loop and vectorizes it.
-            let mut tmp: MaybeUninit<usize>;
-            for i in 0..4 {
-                tmp = *a_ptr.offset(i);
-                *a_ptr.offset(i) = *b_ptr.offset(i);
-                *b_ptr.offset(i) = tmp;
-            }
-        }
+        self.inner.swap(a, b);
     }
 
     /// Rotate the grid, moving all lines up/down in history.
@@ -297,6 +289,26 @@ mod tests {
         assert_eq!(storage.len, 3);
         assert_eq!(storage.zero, 0);
         assert_eq!(storage.visible_lines, 3);
+    }
+
+    #[test]
+    fn idle_trim_preserves_rotated_rows_and_releases_cleared_capacity() {
+        let mut storage = Storage::<char>::with_capacity(3, 1);
+        storage.initialize(2000, 1);
+        storage.rotate(731);
+        for line in -2000..3 {
+            storage[Line(line)] = filled_row(char::from_u32((line + 3000) as u32).unwrap());
+        }
+        storage.shrink_lines(1900);
+        let expected: Vec<_> = (-100..3).map(|line| storage[Line(line)].clone()).collect();
+        storage.trim_idle_cache();
+        assert!(storage.inner.capacity() <= storage.len + 64);
+        for (line, row) in (-100..3).zip(expected) {
+            assert_eq!(storage[Line(line)], row);
+        }
+        storage.initialize(50, 1);
+        assert_eq!(storage.len(), 153);
+        assert_eq!(storage[Line(2)], filled_row(char::from_u32(3002).unwrap()));
     }
 
     #[test]

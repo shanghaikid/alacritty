@@ -1,0 +1,296 @@
+[
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 32947,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.45574951171875,
+      "resident_mib": 80.234375,
+      "cpu_seconds": 0.18370316666666667,
+      "idle_wakes": 0,
+      "interrupt_wakes": 14
+    },
+    "history_fill_seconds": 0.16500787483528256,
+    "history_active": {
+      "footprint_mib": 160.1124267578125,
+      "resident_mib": 173.296875,
+      "cpu_seconds": 0.4319245,
+      "idle_wakes": 0,
+      "interrupt_wakes": 19
+    },
+    "history_idle": {
+      "footprint_mib": 78.1124267578125,
+      "resident_mib": 155.375,
+      "cpu_seconds": 0.6676050833333333,
+      "idle_wakes": 4,
+      "interrupt_wakes": 416
+    },
+    "idle": {
+      "seconds": 3.0068471250124276,
+      "cpu_percent_one_core": 0.0035959593389560027,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 69.0499267578125,
+      "resident_mib": 136.265625,
+      "cpu_seconds": 0.6803372083333333,
+      "idle_wakes": 5,
+      "interrupt_wakes": 421
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 0,
+    "binary_sha256": "d013860cede7ef1717ccd317be2d3da425c97f616736a4dbc02602923e925f82",
+    "sampled_peak_footprint_mib": 160.1124267578125,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 33183,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.5654296875,
+      "resident_mib": 107.328125,
+      "cpu_seconds": 0.24373495833333333,
+      "idle_wakes": 1,
+      "interrupt_wakes": 98
+    },
+    "history_fill_seconds": 0.10776050016283989,
+    "history_active": {
+      "footprint_mib": 158.80023193359375,
+      "resident_mib": 208.328125,
+      "cpu_seconds": 0.4353797916666667,
+      "idle_wakes": 1,
+      "interrupt_wakes": 124
+    },
+    "history_idle": {
+      "footprint_mib": 66.14398193359375,
+      "resident_mib": 213.71875,
+      "cpu_seconds": 0.507624125,
+      "idle_wakes": 97,
+      "interrupt_wakes": 860
+    },
+    "idle": {
+      "seconds": 3.0035933749750257,
+      "cpu_percent_one_core": 0.3787061112012621,
+      "wakeups_per_second": 3.9952145653203734
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.14398193359375,
+      "resident_mib": 213.71875,
+      "cpu_seconds": 0.5446014583333334,
+      "idle_wakes": 112,
+      "interrupt_wakes": 979
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 0,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 159.17523193359375,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 33401,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.3934326171875,
+      "resident_mib": 107.390625,
+      "cpu_seconds": 0.22771908333333335,
+      "idle_wakes": 13,
+      "interrupt_wakes": 93
+    },
+    "history_fill_seconds": 0.13044004095718265,
+    "history_active": {
+      "footprint_mib": 158.72216796875,
+      "resident_mib": 208.4375,
+      "cpu_seconds": 0.469905,
+      "idle_wakes": 13,
+      "interrupt_wakes": 114
+    },
+    "history_idle": {
+      "footprint_mib": 65.75341796875,
+      "resident_mib": 213.515625,
+      "cpu_seconds": 0.5302124166666667,
+      "idle_wakes": 124,
+      "interrupt_wakes": 1224
+    },
+    "idle": {
+      "seconds": 3.0019158753566444,
+      "cpu_percent_one_core": 0.23958865933061568,
+      "wakeups_per_second": 2.9980853473886073
+    },
+    "cleared_idle": {
+      "footprint_mib": 65.75341796875,
+      "resident_mib": 213.515625,
+      "cpu_seconds": 0.5682304583333334,
+      "idle_wakes": 142,
+      "interrupt_wakes": 1318
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 1,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 158.73779296875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 33611,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 62.34637451171875,
+      "resident_mib": 81.421875,
+      "cpu_seconds": 0.18651095833333334,
+      "idle_wakes": 0,
+      "interrupt_wakes": 18
+    },
+    "history_fill_seconds": 0.16892462503165007,
+    "history_active": {
+      "footprint_mib": 157.2530517578125,
+      "resident_mib": 171.0625,
+      "cpu_seconds": 0.437357625,
+      "idle_wakes": 0,
+      "interrupt_wakes": 22
+    },
+    "history_idle": {
+      "footprint_mib": 78.3311767578125,
+      "resident_mib": 147.34375,
+      "cpu_seconds": 0.6913220416666667,
+      "idle_wakes": 24,
+      "interrupt_wakes": 418
+    },
+    "idle": {
+      "seconds": 3.0038295001722872,
+      "cpu_percent_one_core": 0.003577377921323506,
+      "wakeups_per_second": 0.33290837577254107
+    },
+    "cleared_idle": {
+      "footprint_mib": 69.6749267578125,
+      "resident_mib": 136.578125,
+      "cpu_seconds": 0.70548425,
+      "idle_wakes": 26,
+      "interrupt_wakes": 424
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 1,
+    "binary_sha256": "d013860cede7ef1717ccd317be2d3da425c97f616736a4dbc02602923e925f82",
+    "sampled_peak_footprint_mib": 157.2530517578125,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 33829,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 62.096435546875,
+      "resident_mib": 80.828125,
+      "cpu_seconds": 0.19599833333333333,
+      "idle_wakes": 2,
+      "interrupt_wakes": 16
+    },
+    "history_fill_seconds": 0.1682293750345707,
+    "history_active": {
+      "footprint_mib": 157.04998779296875,
+      "resident_mib": 170.6875,
+      "cpu_seconds": 0.445935375,
+      "idle_wakes": 2,
+      "interrupt_wakes": 19
+    },
+    "history_idle": {
+      "footprint_mib": 77.846923828125,
+      "resident_mib": 151.203125,
+      "cpu_seconds": 0.72023125,
+      "idle_wakes": 44,
+      "interrupt_wakes": 416
+    },
+    "idle": {
+      "seconds": 3.0025646667927504,
+      "cpu_percent_one_core": 0.006179439487803343,
+      "wakeups_per_second": 0.0
+    },
+    "cleared_idle": {
+      "footprint_mib": 69.11248779296875,
+      "resident_mib": 135.609375,
+      "cpu_seconds": 0.7317595416666667,
+      "idle_wakes": 44,
+      "interrupt_wakes": 421
+    },
+    "complete": true,
+    "terminal": "alacritty",
+    "pair": 2,
+    "binary_sha256": "d013860cede7ef1717ccd317be2d3da425c97f616736a4dbc02602923e925f82",
+    "sampled_peak_footprint_mib": 157.06561279296875,
+    "sampling_interval_seconds": 0.01
+  },
+  {
+    "history_limit": 100000,
+    "corpus": "cjk",
+    "terminal_pid": 34052,
+    "dimensions": [
+      120,
+      40
+    ],
+    "empty": {
+      "footprint_mib": 61.79974365234375,
+      "resident_mib": 107.546875,
+      "cpu_seconds": 0.2503455,
+      "idle_wakes": 4,
+      "interrupt_wakes": 86
+    },
+    "history_fill_seconds": 0.12871954077854753,
+    "history_active": {
+      "footprint_mib": 159.20654296875,
+      "resident_mib": 208.6875,
+      "cpu_seconds": 0.499265125,
+      "idle_wakes": 4,
+      "interrupt_wakes": 107
+    },
+    "history_idle": {
+      "footprint_mib": 66.33154296875,
+      "resident_mib": 213.859375,
+      "cpu_seconds": 0.5648081666666667,
+      "idle_wakes": 85,
+      "interrupt_wakes": 1016
+    },
+    "idle": {
+      "seconds": 3.001206290908158,
+      "cpu_percent_one_core": 0.40593399739210156,
+      "wakeups_per_second": 1.3327974195301349
+    },
+    "cleared_idle": {
+      "footprint_mib": 66.33154296875,
+      "resident_mib": 213.859375,
+      "cpu_seconds": 0.6048604166666667,
+      "idle_wakes": 94,
+      "interrupt_wakes": 1109
+    },
+    "complete": true,
+    "terminal": "ghostty",
+    "pair": 2,
+    "binary_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+    "sampled_peak_footprint_mib": 159.20654296875,
+    "sampling_interval_seconds": 0.01
+  }
+]

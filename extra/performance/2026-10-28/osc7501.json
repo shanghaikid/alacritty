@@ -1,0 +1,24 @@
+{
+  "result": "PASS",
+  "changing_reports": 50000,
+  "duplicate_reports": 50000,
+  "seconds": 0.139,
+  "native_title_updates": 2,
+  "final": {
+    "generation": 50009,
+    "records": [
+      {
+        "app": null,
+        "id": "",
+        "kind": null,
+        "msg": null,
+        "progress": 4,
+        "state": "working",
+        "title": null
+      }
+    ],
+    "title": "OSC7501 acceptance — [working 4%]",
+    "title_updates": 9,
+    "window_id": 5039954624
+  }
+}

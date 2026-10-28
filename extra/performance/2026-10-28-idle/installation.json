@@ -1,0 +1,9 @@
+{
+  "installed": "/Applications/Alacritty.app",
+  "backup": "/Users/zilliz/workspace/alacritty/target/local-app-backups/20261028-163848/Alacritty.app",
+  "previous_sha256": "dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e",
+  "installed_sha256": "40c97770fd73b4e3007f11384795cbbb6e64112f37d874b44997bbfd32e7dbe0",
+  "codesign_verified": true,
+  "version": "alacritty 0.17.0 (ef3579b3)",
+  "existing_sessions_terminated": false
+}

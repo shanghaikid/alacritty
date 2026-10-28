@@ -1,0 +1,9 @@
+{
+  "alacritty_base": "ef3579b37531e67f925fb5e4c1d196f1bca148f7",
+  "vte": "7cfdf88e709ab444ed9d69b6bd16c02d7c092839",
+  "bundle": "/Users/zilliz/workspace/alacritty/target/performance-20261028/Alacritty.app",
+  "binary_sha256": "1c9f2a464791fbdcebca9786238d8db55c6c8696af62b1787609c87a037650ef",
+  "build": "cargo build --locked --release -p alacritty",
+  "signature": "ad-hoc; codesign --verify --deep --strict passed",
+  "rust_build_cache": "isolated temporary target, removed after build"
+}

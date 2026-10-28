@@ -68,7 +68,9 @@ __attribute__((constructor)) static void install(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer *timer) {
             if (phase() != 'i' || sent != seen) return;
-            NSWindow *window = NSApp.keyWindow;
+            // Deliver to the isolated test window even when this CLI-launched
+            // process is not the foreground app. No global event or focus change.
+            NSWindow *window = NSApp.keyWindow ?: NSApp.windows.firstObject;
             if (!window) return;
             NSString *text = sent == 100 ? @"q" : @"x";
             if (sent == 100) [timer invalidate]; else { ++sent; sentAt = seconds(); }
@@ -76,7 +78,7 @@ __attribute__((constructor)) static void install(void) {
                 location:NSZeroPoint modifierFlags:0 timestamp:NSProcessInfo.processInfo.systemUptime
                 windowNumber:window.windowNumber context:nil characters:text
                 charactersIgnoringModifiers:text isARepeat:NO keyCode:7];
-            [NSApp sendEvent:event];
+            [window sendEvent:event];
         }];
     });
 }
@@ -147,6 +149,8 @@ def main(binary, config, destination):
         kind, value = row.split(",")
         values[kind].append(float(value))
     frames = values["scroll_frame"]
+    assert len(values["input_ms"]) == 100, "Missing local key/GPU acknowledgments"
+    assert len(frames) > 1, "Missing scrolling frames"
     intervals = [(b - a) * 1000 for a, b in zip(frames, frames[1:])]
     def stats(data):
         ordered = sorted(data)

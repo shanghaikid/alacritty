@@ -1,0 +1,27 @@
+{"width": 1040, "height": 696, "different_pixels": 0}
+{
+  "result": "PASS",
+  "changing_reports": 50000,
+  "duplicate_reports": 50000,
+  "seconds": 0.134,
+  "native_title_updates": 2,
+  "final": {
+    "generation": 50009,
+    "records": [
+      {
+        "app": null,
+        "id": "",
+        "kind": null,
+        "msg": null,
+        "progress": 4,
+        "state": "working",
+        "title": null
+      }
+    ],
+    "title": "OSC7501 acceptance — [working 4%]",
+    "title_updates": 9,
+    "window_id": 5073537360
+  }
+}
+[{"inherited_slave": false, "verified_bytes": 2880016}, {"inherited_slave": true, "verified_bytes": 2880016}]
+{"scroll_frames": 239, "scroll_fps": 59.711063687240824, "scroll_interval_ms": {"median": 16.51599956676364, "p95": 20.283000078052282, "max": 36.21299983933568}, "local_key_samples": 100, "local_key_to_gpu_ms": {"median": 3.1509997785, "p95": 5.16099995, "max": 12.309999671}}

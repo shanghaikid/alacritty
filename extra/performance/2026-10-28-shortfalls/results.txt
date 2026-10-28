@@ -1,0 +1,191 @@
+Alacritty performance shortfalls — 2026-10-28
+
+Purpose
+Reduce active history memory and 64 KiB burst acknowledgment delay relative to
+the earlier optimized Alacritty delivered in target/performance-20261028.
+This is a follow-up to extra/performance/2026-10-28/results.txt, not a comparison
+with unmodified upstream Alacritty. Source remains a working-tree change.
+
+Implementation
+- Parser demand wakes the macOS PTY gather thread when its ready queue empties.
+  Pending output is published immediately; queued bulk work can still be batched.
+- Uniform scalar rows use four bytes per cell plus one shared row style, with
+  Unicode scalar values and wrap/wide-cell flags preserved. Plain ASCII/CJK writes
+  can update this representation directly, including recycled rows and wrapping.
+- Other rows retain normal Cell storage. Complex edits materialize dense cells;
+  immutable readers cache a lossless expansion. Existing idle LZ4 compression
+  remains available for both forms. Recent/visible history is excluded from the
+  archival scan, and grapheme rows skip futile scalar-packing attempts.
+- Dense mutable indexing stays inline; expansion runs in a cold helper.
+- Growing a cleared row marks the old columns occupied, preserving the uniform
+  suffix invariant when new columns have a different background. Regression
+  coverage compares both ASCII and CJK bulk writes with scalar behavior.
+
+Source inspiration and provenance
+Ghostty v1.4.0 source was pulled and inspected locally at
+/Users/zilliz/workspace/ghostty, commit 83fb95624b0439ee660c2679b43b38c8b63769cd.
+The official 1.4.0 macOS binary is used for comparison. Relevant upstream ideas
+are PTY pipelining (#13209), bulk parsing (#13220), and idle history compression
+(#13264). The new writable scalar encoding adapts those memory/throughput goals
+to Alacritty's cell and row APIs; it is not a direct Ghostty implementation port.
+https://ghostty.org/docs/install/release-notes/1-4-0
+VTE remains pinned to the existing signed-off fork commit
+7cfdf88e709ab444ed9d69b6bd16c02d7c092839; this follow-up did not change that fork.
+
+Final binary methodology
+Apple M1 Pro, macOS 15.7.9, native arm64 .app bundles for both Alacritty versions.
+Three alternating pairs per comparator, three 8 MiB samples per workload/process,
+120x40 cells, Menlo 11, 10k history, grapheme mode enabled. Results below are the
+median of the three process medians, in MiB/s. PTY timing ends at a cursor-position
+reply, so it includes draining and parsing but excludes GPU/display presentation.
+Memory uses three alternating pairs per comparator, 100k unique numbered lines
+of 118 cells, Darwin physical footprint. Active is sampled after acknowledgment;
+the parent also samples process footprint every 10 ms. Sampled peak is not a
+guaranteed instantaneous high-water mark. Idle/clear samples follow 3-second waits.
+No compilation or another native test runs concurrently with measurements.
+
+Final throughput: new versus previous optimized Alacritty
+Workload                   New       Reference    Change
+ascii                        187.45      186.31    +0.61%
+ascii_wrapped                177.57      188.58    -5.84%
+cjk                          177.97      181.64    -2.02%
+ansi_cjk                     129.96      140.90    -7.76%
+graphemes                     90.52       89.56    +1.08%
+osc_titles                    33.33       33.36    -0.07%
+hyperlinks                    89.35       88.92    +0.48%
+unicode_varied                70.62       72.94    -3.19%
+
+PTY acknowledgments (ms, NOT GPU/display latency)
+burst_1024_bytes_ms                            0.0772      0.0531
+burst_65536_bytes_ms                           0.4687      1.4495
+burst_1048576_bytes_ms                         4.4313      6.7724
+tui_frame_ack_ms                               0.1141      0.1118
+first_input_during_idle_maintenance_ms         0.5012      0.3533
+
+Final throughput: new versus Ghostty 1.4.0 (separate paired run)
+Workload                   New       Reference    Change
+ascii                        201.36      183.22    +9.90%
+ascii_wrapped                171.22      172.93    -0.99%
+cjk                          182.26      166.90    +9.20%
+ansi_cjk                     126.60      128.78    -1.69%
+graphemes                     89.72       97.72    -8.18%
+osc_titles                    33.06       14.01  +136.02%
+hyperlinks                    88.44       18.29  +383.58%
+unicode_varied                73.99       72.13    +2.58%
+
+PTY acknowledgments (ms, NOT GPU/display latency)
+burst_1024_bytes_ms                            0.0638      0.0567
+burst_65536_bytes_ms                           0.4572      0.6916
+burst_1048576_bytes_ms                         4.6782      4.8388
+tui_frame_ack_ms                               0.1179      0.1048
+first_input_during_idle_maintenance_ms         0.5011      0.2505
+
+Final memory: new versus previous optimized Alacritty
+100,000 history lines           New       Reference
+empty                            67.847       67.315 MiB
+history_active                  153.144      369.597 MiB
+history_idle                     86.675       84.550 MiB
+cleared_idle                     69.238       72.034 MiB
+sampled_peak_footprint_mib     153.2220     370.2063
+history_fill_seconds             0.0917       0.0872
+cpu_percent_one_core             0.4035       0.0084
+wakeups_per_second               0.0000       0.0000
+
+Final memory: new versus Ghostty 1.4.0 (separate paired run)
+100,000 history lines           New       Reference
+empty                            66.284       62.128 MiB
+history_active                  153.691      164.409 MiB
+history_idle                     86.238       71.222 MiB
+cleared_idle                     77.019       70.956 MiB
+sampled_peak_footprint_mib     153.6908     164.4092
+history_fill_seconds             0.0951       0.0948
+cpu_percent_one_core             0.0159       0.4197
+wakeups_per_second               0.0000       1.3311
+
+History operation costs and correctness
+100k history rows; three rotating trials for each storage/corpus combination.
+Each cold regex search, 500 viewport-page reads, and 81->160->120 column reflow
+starts with a fresh grid clone prepared outside timing. Search results and
+character/flag/grapheme-tail hashes after reflow match across representations.
+These are CPU operations, not end-to-end UI frame timings.
+Corpus/storage        Search ms    Reflow ms    Page P95 ms
+ascii/dense               130.094      108.730          0.016
+ascii/live                163.039      173.629          0.020
+ascii/compressed          231.240      232.668          0.048
+cjk/dense                 105.219      118.495          0.018
+cjk/live                  140.654      153.047          0.020
+cjk/compressed            188.262      212.786          0.037
+graphemes/dense           114.890       90.200          0.017
+graphemes/live            125.495       88.965          0.017
+graphemes/compressed      203.253      201.063          0.042
+
+Validation of the final application
+- 343 workspace tests passed, 5 intentionally ignored; 45 reference fixtures.
+- alacritty_terminal --no-default-features: PASS.
+- Clippy workspace/all-targets: PASS with two pre-existing lint categories kept
+  as warnings: question_mark (3 sites) and useless_borrows_in_formatting (1 site).
+- cargo fmt --check still reports pre-existing differences in untouched files;
+  no modified Rust file is reported. git diff --check passes.
+- Native framebuffer fixture: 1040x696, zero changed pixels versus baseline;
+  covers styles, CJK, combining marks, ZWJ emoji, flags, and hyperlinks.
+- PTY shutdown: exact 2,880,016 bytes with ordinary exit and inherited open slave.
+- OSC 7501 native status: 50k changing + 50k duplicate reports, malformed/oversized
+  requests, synchronized-output timeout and static replies passed.
+- Local window key-event -> GPU readback: 100 samples, median
+  3.151 ms, P95 5.161 ms.
+  Scroll 59.71 FPS, P95 interval 20.283 ms.
+  This probe targets only its own test window; it is not physical input/display
+  latency, and it is not a Ghostty GPU comparison.
+- codesign --verify --deep --strict: PASS.
+
+Tradeoffs and limits
+Active plain-text history and burst delays improve substantially. Some output
+categories still have a throughput cost: the final paired medians include about
+3% lower mixed Unicode, 6% lower wrapped ASCII and 8% lower ANSI/CJK versus the
+previous optimized version. Earlier five-pair runs varied in magnitude/direction
+for some categories; all raw measurements are retained rather than claiming
+every workload improved. Empty/idle memory remains above Ghostty.
+The scalar encoding does not cover arbitrary per-cell styles, hyperlinks or
+grapheme extras: these retain dense storage until eligible idle compression.
+Reading packed history expands cached cells; cold search/reflow therefore costs
+CPU and temporary memory compared with dense-only history. Idle LZ4 compression
+also has this cost, including in the previous version. Tests do not establish
+latency on every desktop, GPU energy, hidden-tab behavior, or Linux/Windows parity.
+Desktop timings fluctuate; smaller percentage differences should not be treated
+as universal rankings or a statistically established advantage.
+
+Earlier measurements and failed attempts
+Five-pair throughput and three-pair 10k/100k memory measurements before the final
+row-growth correctness fix are preserved as *-before-resize-fix.json. Their
+binary differs from the final app, so they are not silently pooled into the final
+tables. One earlier Ghostty batch was aborted because unrelated keyboard bytes
+entered a probe; throughput-ghostty-aborted.json preserves its completed pairs,
+excluded from the aggregates. An offline validation attempt could not resolve
+uncached registry metadata; normal locked validation subsequently passed.
+Earlier implementation experiments are retained in /private/tmp/alacritty-shortfalls.
+
+Reproduce
+Use a dedicated temporary CARGO_TARGET_DIR and an EXIT cleanup trap for every
+Rust validation/build run. The commands below describe the work, not a request
+to retain any build cache.
+cargo test --locked --workspace
+cargo check --locked -p alacritty_terminal --no-default-features
+cargo clippy --locked --workspace --all-targets -- -D warnings --force-warn clippy::question_mark --force-warn clippy::useless_borrows_in_formatting
+cargo run --locked --release -p alacritty_terminal --example history-performance -- 100000
+python3 extra/compare-terminal-performance.py --alacritty NEW --baseline OLD --output OUT --pairs 3 --interaction
+python3 extra/compare-terminal-performance.py --alacritty NEW --ghostty GHOSTTY --output OUT --pairs 3 --interaction
+python3 extra/compare-terminal-resources.py --alacritty NEW --baseline OLD --config-directory OUT --output MEMORY --pairs 3 --history 100000
+python3 extra/compare-terminal-resources.py --alacritty NEW --ghostty GHOSTTY --config-directory OUT --output MEMORY --pairs 3 --history 100000
+python3 extra/render-acceptance.py OLD NEW RENDER_OUT
+python3 extra/frame-pacing-acceptance.py NEW OUT/alacritty.toml FRAMES_OUT
+python3 extra/test-terminal-pty.py --alacritty NEW --config OUT/alacritty.toml
+python3 extra/program-status-acceptance.py NEW
+
+Deliverables
+Test application: target/performance-shortfalls-20261028/Alacritty.app
+Final executable SHA-256: dc7a9652e2a1002d2ac12fb3706219f0f1f9a319ea6d8b329b54c5cda931b90e
+package.json records baseline/Ghostty hashes and the changed-source hashes.
+The earlier test app remains available as baseline; /Applications was unchanged.
+All task-owned temporary Rust build directories were cleaned after validation,
+including failed offline attempts. Intermediate copied binaries/staging bundles
+are removed after their dependent checks; only the deliverable apps are retained.

@@ -174,9 +174,12 @@ fn alacritty(mut options: Options) -> Result<(), Box<dyn Error>> {
         unsafe { env::set_var(key, value) };
     }
 
-    // Switch to home directory.
+    // Reference recordings belong in the caller's test directory, like on the
+    // other platforms, rather than overwriting files in the user's home.
     #[cfg(target_os = "macos")]
-    env::set_current_dir(home::home_dir().unwrap()).unwrap();
+    if !config.debug.ref_test {
+        env::set_current_dir(home::home_dir().unwrap()).unwrap();
+    }
 
     // Set macOS locale.
     #[cfg(target_os = "macos")]

@@ -1,0 +1,123 @@
+Alacritty / Ghostty 1.4.0 performance comparison — 2026-10-28
+
+Scope and conclusion
+The modified Alacritty reaches the same throughput tier as Ghostty 1.4.0 on this
+Apple M1 Pro / macOS 15.7.9 machine. All eight tested output categories have equal
+or higher median throughput. Small percentage differences are within desktop
+run-to-run variation; this is not a claim of superiority on all platforms or
+workloads. Large active history memory and 64 KiB burst latency remain weaker.
+
+Source provenance
+Alacritty baseline: ef3579b3; implementation: current working-tree diff.
+Ghostty source inspected: v1.4.0, 83fb95624b0439ee660c2679b43b38c8b63769cd,
+local checkout /Users/zilliz/workspace/ghostty. Official 1.4.0 macOS binary used.
+VTE: 7cfdf88e709ab444ed9d69b6bd16c02d7c092839, signed-off commit in user fork:
+https://github.com/shanghaikid/vte/commit/7cfdf88e709ab444ed9d69b6bd16c02d7c092839
+Cargo.toml and Cargo.lock pin that commit; no temporary path dependency remains.
+https://ghostty.org/docs/install/release-notes/1-4-0
+Relevant upstream designs: #13209 PTY pipeline, #13220 bulk parsing,
+#13227 renderer lock duration, #13264 idle scrollback compression,
+#14017 hidden GPU resources, #14011 OSC parsing, #13537 reflow.
+
+Implemented here
+- macOS bounded PTY read-ahead: four 64 KiB buffers; small interactive output is
+  published immediately. Both I/O threads use user-initiated QoS. Exit draining
+  handles a descendant retaining the slave without dropping final output.
+- VTE printable ASCII/Unicode callbacks with scalar-compatible defaults;
+  chunk-consistent UTF-8 C1 handling and DEL ignoring.
+- ASCII and independent CJK row writes; complex modes retain scalar behavior.
+  Occupied-cell tracking limits clearing to the cells actually written.
+- Short grapheme property/tail caches, inline short tails, copy-on-write extras;
+  full Unicode segmentation remains the fallback for uncommon/long clusters.
+- Idle lossless history compression: shared blocks of 16 rows, bounded batches,
+  lazy restoration, hot/visible rows excluded, Darwin allocator page release.
+- Parser-generated replies go directly to PTY without waiting for the UI loop.
+- Reproducible native PTY, memory and interaction probes. Pixel fixture includes
+  ZWJ emoji, regional indicators, combining marks, styles and hyperlinks.
+
+Throughput methodology
+Five alternating Alacritty/Ghostty pairs, three 8 MiB payload samples per category
+per process, 120x40 cells, Menlo 11, 10,000 history lines, grapheme mode enabled.
+Every payload waits for a cursor-position reply. These numbers measure PTY drain
+and terminal parsing, NOT GPU presentation or physical keyboard latency. The
+random Unicode corpus is deterministic and larger than the short-cluster cache.
+No compilation or other native test ran concurrently with throughput sampling.
+Each number below is the median of five per-process throughput medians (MiB/s).
+Complete raw timings, binary hashes, configurations and commands: throughput.json.
+
+Workload                 Alacritty    Ghostty     Ratio
+ascii                      162.10     139.11     1.17x
+ascii_wrapped              150.24     142.59     1.05x
+cjk                        141.04     134.58     1.05x
+ansi_cjk                   115.24     112.24     1.03x
+graphemes                   85.58      83.32     1.03x
+osc_titles                  32.04      14.21     2.26x
+hyperlinks                  85.12      18.66     4.56x
+unicode_varied              73.70      70.03     1.05x
+
+PTY interaction (milliseconds, median of five per-process medians)
+Probe                                        Alacritty  Ghostty
+burst_1024_bytes_ms                             0.057    0.074
+burst_65536_bytes_ms                            1.200    0.805
+burst_1048576_bytes_ms                          5.887    6.184
+tui_frame_ack_ms                                0.114    0.104
+first_input_during_idle_maintenance_ms          0.471    1.136
+
+Native rendering and correctness
+- Workspace: 340 passing tests including doc tests, 5 intentionally ignored
+  benchmark/environment tests. VTE: 60 ANSI/serde tests; no_std: 35 + 1 doc test.
+- alacritty_terminal --no-default-features check: PASS.
+- Clippy workspace/all-targets: PASS with two pre-existing lint categories kept
+  as warnings (question_mark: 3 sites; useless_borrows_in_formatting: 1 site).
+  Plain strict Clippy on the current compiler fails these existing sites.
+- cargo fmt --check finds pre-existing formatting differences in untouched files;
+  modified Rust files have no reported formatting difference. git diff --check PASS.
+- OpenGL readback: 1040x696, zero pixel differences against baseline.
+  Initial fixture difference was a PID in a global-hotkey warning; the fixture
+  now disables the hotkey, and compares unobstructed application content.
+- PTY exit: exact 2,880,016 bytes in both ordinary exit and retained-slave cases.
+- OSC 7501: 50,000 changing + 50,000 duplicate reports; status delivery, timeout,
+  malformed/oversized inputs and static replies verified.
+- Local synthetic window key event to GPU readback: 100 samples, median 3.025 ms,
+  P95 4.122 ms. Scroll: 59.84 FPS, P95 frame interval 22.956 ms.
+  The initial fixture received no key samples in either old or new binary because
+  the CLI app lacked a key window. Events now target its own window directly;
+  no global events/focus change. This excludes physical input/display scanout,
+  and is an Alacritty regression check, not a Ghostty GPU latency comparison.
+
+Memory and remaining limitations
+Darwin proc_pid_rusage physical footprint, equal history line limits, 118 columns
+of unique numbered text. Measurements are process-level, one run per case;
+resources.json also retains resident memory and CPU counters. Active measurement
+is immediately after output acknowledgement, not a continuously sampled peak.
+                         Alacritty          Ghostty
+10k history idle            60.38 MiB          59.85 MiB
+100k history active        366.07 MiB         168.10 MiB
+100k history idle           75.64 MiB          66.52 MiB
+100k history cleared        64.75 MiB          66.55 MiB
+100k idle CPU                0.0096%            0.0132% (one-core scale, 3 seconds)
+The 100k compression interval consumed about 0.434 CPU seconds versus 0.092 for
+Ghostty. Final idle CPU excludes that maintenance work. Compression is deferred
+until idle, so active memory is not at parity. Highly varied styles may be kept
+uncompressed. Search/reflow correctness is tested, but comprehensive interactive
+search/reflow latency, hidden tabs, GPU energy and Linux/Windows are not benchmarked.
+64 KiB burst acknowledgement is ~1.20 vs ~0.81 ms; TUI acknowledgement ~0.114 vs
+~0.104 ms. Other measured interaction categories are comparable or faster.
+
+Reproduce (dedicated CARGO_TARGET_DIR; clean it even after failure)
+cargo test --locked --workspace
+cargo check --locked -p alacritty_terminal --no-default-features
+cargo build --locked --release -p alacritty
+python3 extra/compare-terminal-performance.py --alacritty ALACRITTY --ghostty GHOSTTY --output OUT --pairs 5 --interaction
+python3 extra/compare-terminal-resources.py --alacritty ALACRITTY --ghostty GHOSTTY --config-directory OUT --output MEMORY_OUT
+python3 extra/render-acceptance.py BASELINE ALACRITTY RENDER_OUT
+python3 extra/frame-pacing-acceptance.py ALACRITTY OUT/alacritty.toml FRAMES_OUT
+python3 extra/test-terminal-pty.py --alacritty ALACRITTY --config OUT/alacritty.toml
+python3 extra/program-status-acceptance.py ALACRITTY
+
+Artifacts
+Raw experiment logs: /private/tmp/alacritty-ghostty-perf
+Signed test app: target/performance-20261028/Alacritty.app
+Final bundle metadata and SHA-256: package.json. Intermediate Rust binaries cleaned.
+The installed /Applications/Alacritty.app was not replaced.
+All isolated Rust build directories are removed after each validation run.

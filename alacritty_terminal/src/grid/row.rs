@@ -7,6 +7,7 @@ use std::{ptr, slice};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::compact::Cells;
 use crate::grid::GridCell;
 use crate::index::Column;
 use crate::term::cell::ResetDiscriminant;
@@ -15,7 +16,7 @@ use crate::term::cell::ResetDiscriminant;
 #[derive(Default, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Row<T> {
-    inner: Vec<T>,
+    inner: Cells<T>,
 
     /// Maximum number of occupied entries.
     ///
@@ -52,7 +53,7 @@ impl<T: Default> Row<T> {
             inner.set_len(columns);
         }
 
-        Row { inner, occ: 0 }
+        Row { inner: Cells::Dense(inner), occ: 0 }
     }
 
     /// Increase the number of columns in the row.
@@ -62,7 +63,11 @@ impl<T: Default> Row<T> {
             return;
         }
 
-        self.inner.resize_with(columns, T::default);
+        // New columns use T::default(), which can differ from the untouched
+        // suffix of a cleared row (for example, its background color). Keep
+        // occ's uniform-suffix guarantee across this new style boundary.
+        self.occ = self.occ.max(self.inner.len());
+        self.inner.make_mut_vec().resize_with(columns, T::default);
     }
 
     /// Reduce the number of columns in the row.
@@ -77,7 +82,7 @@ impl<T: Default> Row<T> {
         }
 
         // Split off cells for a new row.
-        let mut new_row = self.inner.split_off(columns);
+        let mut new_row = self.inner.make_mut_vec().split_off(columns);
         let index = new_row.iter().rposition(|c| !c.is_empty()).map_or(0, |i| i + 1);
         new_row.truncate(index);
 
@@ -93,6 +98,18 @@ impl<T: Default> Row<T> {
         T: ResetDiscriminant<D> + GridCell,
         D: PartialEq,
     {
+        if let Cells::Packed(row) = &mut self.inner {
+            if T::reset_packed(row, template) {
+                self.occ = 0;
+                return;
+            }
+        }
+        if !self.is_dense() {
+            // Recycled history is discarded, so do not decode it first.
+            let len = self.inner.len();
+            *self = Self::new(len);
+            self.occ = len;
+        }
         debug_assert!(!self.inner.is_empty());
 
         // Mark all cells as dirty if template cell changed.
@@ -110,11 +127,118 @@ impl<T: Default> Row<T> {
     }
 }
 
+impl Row<crate::term::cell::Cell> {
+    pub(crate) fn mark_wrapped(&mut self, column: Column) {
+        use crate::term::cell::{Cell, Flags};
+        if let Cells::Packed(row) = &mut self.inner {
+            if Cell::mark_packed_wrapped(row, column.0) {
+                self.occ = self.occ.max(column.0 + 1);
+                return;
+            }
+        }
+        self[column].flags.insert(Flags::WRAPLINE);
+    }
+
+    pub(crate) fn try_write_wide<F: Fn(char) -> bool>(
+        &mut self,
+        column: Column,
+        chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+        eligible: F,
+        template: &crate::term::cell::Cell,
+    ) -> Option<usize> {
+        use crate::term::cell::Cell;
+        if self.is_dense() && self.occ == 0 && chars.size_hint().0 >= 8 {
+            let first = &self.inner[0];
+            if first.c == ' '
+                && first.extra.is_none()
+                && first.fg == template.fg
+                && first.fg
+                    == crate::vte::ansi::Color::Named(crate::vte::ansi::NamedColor::Foreground)
+                && first.bg == template.bg
+                && first.flags == template.flags
+                && template.flags.is_empty()
+            {
+                self.set_packed(Cell::blank_packed_row(self.len(), template.bg));
+            }
+        }
+        let Cells::Packed(row) = &mut self.inner else {
+            return None;
+        };
+        let count = Cell::write_packed_wide(row, column.0, chars, eligible, template)?;
+        self.occ = self.occ.max(column.0 + count);
+        Some(count)
+    }
+
+    /// Plain ASCII can stay in the compact scalar representation even while
+    /// being written. Complex edits transparently use the normal dense path.
+    pub(crate) fn try_write_ascii(
+        &mut self,
+        column: Column,
+        text: &[u8],
+        fg: crate::vte::ansi::Color,
+        bg: crate::vte::ansi::Color,
+        flags: crate::term::cell::Flags,
+    ) -> Option<usize> {
+        use crate::term::cell::{Cell, Flags};
+        use crate::vte::ansi::{Color, NamedColor};
+
+        if self.is_dense() && self.occ == 0 && text.len() >= 16 {
+            // All cells after occ have the same value. Only convert blank rows
+            // whose untouched cells match the style we are about to write.
+            let first = &self.inner[0];
+            if first.c == ' '
+                && first.extra.is_none()
+                && first.flags == Flags::empty()
+                && flags == Flags::empty()
+                && first.fg == fg
+                && fg == Color::Named(NamedColor::Foreground)
+                && first.bg == bg
+            {
+                self.set_packed(Cell::blank_packed_row(self.len(), bg));
+            }
+        }
+        let Cells::Packed(row) = &mut self.inner else {
+            return None;
+        };
+        let count = Cell::write_packed_ascii(row, column.0, text, fg, bg, flags)?;
+        self.occ = self.occ.max(column.0 + count);
+        Some(count)
+    }
+}
+
 #[allow(clippy::len_without_is_empty)]
 impl<T> Row<T> {
     #[inline]
+    pub(crate) fn is_packed(&self) -> bool {
+        matches!(self.inner, Cells::Packed(_))
+    }
+
+    pub(super) fn is_dense(&self) -> bool {
+        matches!(self.inner, Cells::Dense(_))
+    }
+
+    pub(super) fn set_packed(&mut self, row: super::PackedRow<T>) {
+        self.inner = Cells::Packed(Box::new(row));
+    }
+
+    pub(super) fn is_cold_compact(&self) -> bool {
+        matches!(&self.inner, Cells::Compact(row) if row.block.expanded.get().is_none())
+    }
+
+    pub(super) fn set_compact(&mut self, row: super::CompactRow<T>) {
+        self.inner = Cells::Compact(row);
+    }
+
+    pub(super) fn compact(&mut self)
+    where
+        T: GridCell,
+    {
+        self.inner.compact();
+    }
+
+    #[inline]
     pub fn from_vec(vec: Vec<T>, occ: usize) -> Row<T> {
-        Row { inner: vec, occ }
+        Row { inner: Cells::Dense(vec), occ }
     }
 
     #[inline]
@@ -139,15 +263,15 @@ impl<T> Row<T> {
         T: GridCell,
     {
         self.occ += vec.len();
-        self.inner.append(vec);
+        self.inner.make_mut_vec().append(vec);
     }
 
     #[inline]
     pub fn append_front(&mut self, mut vec: Vec<T>) {
         self.occ += vec.len();
 
-        vec.append(&mut self.inner);
-        self.inner = vec;
+        vec.append(self.inner.make_mut_vec());
+        self.inner = Cells::Dense(vec);
     }
 
     /// Check if all cells in the row are empty.
@@ -163,8 +287,8 @@ impl<T> Row<T> {
     pub fn front_split_off(&mut self, at: usize) -> Vec<T> {
         self.occ = self.occ.saturating_sub(at);
 
-        let mut split = self.inner.split_off(at);
-        std::mem::swap(&mut split, &mut self.inner);
+        let mut split = self.inner.make_mut_vec().split_off(at);
+        std::mem::swap(&mut split, self.inner.make_mut_vec());
         split
     }
 }

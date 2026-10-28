@@ -13,6 +13,9 @@ mod unix;
 #[cfg(not(windows))]
 pub use self::unix::*;
 
+#[cfg(target_os = "macos")]
+mod read_pipeline;
+
 #[cfg(windows)]
 pub mod windows;
 #[cfg(windows)]
@@ -75,6 +78,9 @@ pub trait EventedReadWrite {
 
     fn reader(&mut self) -> &mut Self::Reader;
     fn writer(&mut self) -> &mut Self::Writer;
+
+    /// Prepare to drain output after child exit, including any read-ahead.
+    fn begin_drain(&mut self) {}
 }
 
 /// Events concerning TTY child processes.

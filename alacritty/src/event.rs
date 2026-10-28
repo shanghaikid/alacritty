@@ -15,8 +15,7 @@ use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::rc::Rc;
-#[cfg(unix)]
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use std::{env, f32, mem};
 
@@ -41,7 +40,7 @@ use winit::raw_window_handle::HasDisplayHandle;
 use winit::window::WindowId;
 
 use alacritty_terminal::event::{Event as TerminalEvent, EventListener, Notify};
-use alacritty_terminal::event_loop::Notifier;
+use alacritty_terminal::event_loop::{EventLoopSender, Msg, Notifier};
 use alacritty_terminal::grid::{BidirectionalIterator, Dimensions, Scroll};
 use alacritty_terminal::index::{Boundary, Column, Direction, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
@@ -816,6 +815,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn scroll(&mut self, scroll: Scroll) {
+        self.notifier.compact_history();
         let old_offset = self.terminal.grid().display_offset() as i32;
 
         let old_vi_cursor = self.terminal.vi_mode_cursor;
@@ -1286,6 +1286,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
 
     /// Find the next search match.
     fn search_next(&mut self, origin: Point, direction: Direction, side: Side) -> Option<Match> {
+        self.notifier.compact_history();
         self.search_state
             .dfas
             .as_mut()
@@ -1669,6 +1670,7 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
 
     /// Jump to the first regex match from the search origin.
     fn goto_match(&mut self, mut limit: Option<usize>) {
+        self.notifier.compact_history();
         let dfas = match &mut self.search_state.dfas {
             Some(dfas) => dfas,
             None => return,
@@ -2200,11 +2202,16 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
 pub struct EventProxy {
     proxy: EventLoopProxy<Event>,
     window_id: WindowId,
+    pty_sender: Arc<OnceLock<EventLoopSender>>,
 }
 
 impl EventProxy {
     pub fn new(proxy: EventLoopProxy<Event>, window_id: WindowId) -> Self {
-        Self { proxy, window_id }
+        Self { proxy, window_id, pty_sender: Arc::new(OnceLock::new()) }
+    }
+
+    pub fn set_pty_sender(&self, sender: EventLoopSender) {
+        assert!(self.pty_sender.set(sender).is_ok());
     }
 
     /// Send an event to the event loop.
@@ -2215,6 +2222,19 @@ impl EventProxy {
 
 impl EventListener for EventProxy {
     fn send_event(&self, event: TerminalEvent) {
+        // Parser-generated replies need no UI state. Routing them through the
+        // window loop makes device queries wait for a potentially slow frame.
+        let event = match (self.pty_sender.get(), event) {
+            (Some(sender), TerminalEvent::PtyWrite(text)) => {
+                let _ = sender.send(Msg::Input(Cow::Owned(text.into_bytes())));
+                return;
+            },
+            (Some(sender), TerminalEvent::PtyWriteStatic(text)) => {
+                let _ = sender.send(Msg::Input(Cow::Borrowed(text.as_bytes())));
+                return;
+            },
+            (_, event) => event,
+        };
         let _ = self.proxy.send_event(Event::new(event.into(), self.window_id));
     }
 }

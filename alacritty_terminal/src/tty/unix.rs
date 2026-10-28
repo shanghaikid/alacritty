@@ -26,6 +26,8 @@ use signal_hook::low_level::{pipe as signal_pipe, unregister as unregister_signa
 use signal_hook::{SigId, consts as sigconsts};
 
 use crate::event::{OnResize, WindowSize};
+#[cfg(target_os = "macos")]
+use crate::tty::read_pipeline::PtyReader;
 use crate::tty::{ChildEvent, EventedPty, EventedReadWrite, Options};
 
 // Interest in PTY read/writes.
@@ -104,6 +106,8 @@ pub struct Pty {
     file: File,
     signals: UnixStream,
     sig_id: SigId,
+    #[cfg(target_os = "macos")]
+    reader: Option<PtyReader>,
 }
 
 impl Pty {
@@ -293,7 +297,23 @@ pub fn from_fd(config: &Options, window_id: u64, master: OwnedFd, slave: OwnedFd
                 set_nonblocking(master_fd);
             }
 
-            Ok(Pty { child, file: File::from(master), signals, sig_id })
+            let pty = Pty {
+                child,
+                file: File::from(master),
+                signals,
+                sig_id,
+                #[cfg(target_os = "macos")]
+                reader: None,
+            };
+            #[cfg(target_os = "macos")]
+            let pty = {
+                let mut pty = pty;
+                // Construct Pty first so a read-ahead setup failure also
+                // terminates the child and unregisters its signal handler.
+                pty.reader = Some(PtyReader::new(pty.file.try_clone()?)?);
+                pty
+            };
+            Ok(pty)
         },
         Err(err) => Err(Error::new(
             err.kind(),
@@ -321,7 +341,10 @@ impl Drop for Pty {
 }
 
 impl EventedReadWrite for Pty {
+    #[cfg(not(target_os = "macos"))]
     type Reader = File;
+    #[cfg(target_os = "macos")]
+    type Reader = PtyReader;
     type Writer = File;
 
     #[inline]
@@ -332,6 +355,17 @@ impl EventedReadWrite for Pty {
         poll_opts: PollMode,
     ) -> Result<()> {
         interest.key = PTY_READ_WRITE_TOKEN;
+        #[cfg(target_os = "macos")]
+        {
+            interest.readable = false;
+            unsafe {
+                poll.add_with_mode(
+                    &self.reader.as_ref().unwrap().notification,
+                    Event::readable(PTY_READ_WRITE_TOKEN),
+                    poll_opts,
+                )?;
+            }
+        }
         unsafe {
             poll.add_with_mode(&self.file, interest, poll_opts)?;
         }
@@ -353,6 +387,10 @@ impl EventedReadWrite for Pty {
         poll_opts: PollMode,
     ) -> Result<()> {
         interest.key = PTY_READ_WRITE_TOKEN;
+        #[cfg(target_os = "macos")]
+        {
+            interest.readable = false;
+        }
         poll.modify_with_mode(&self.file, interest, poll_opts)?;
 
         poll.modify_with_mode(
@@ -364,18 +402,32 @@ impl EventedReadWrite for Pty {
 
     #[inline]
     fn deregister(&mut self, poll: &Arc<Poller>) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        poll.delete(&self.reader.as_ref().unwrap().notification)?;
         poll.delete(&self.file)?;
         poll.delete(&self.signals)
     }
 
     #[inline]
-    fn reader(&mut self) -> &mut File {
-        &mut self.file
+    fn reader(&mut self) -> &mut Self::Reader {
+        #[cfg(target_os = "macos")]
+        {
+            self.reader.as_mut().unwrap()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            &mut self.file
+        }
     }
 
     #[inline]
     fn writer(&mut self) -> &mut File {
         &mut self.file
+    }
+
+    #[cfg(target_os = "macos")]
+    fn begin_drain(&mut self) {
+        self.reader.as_mut().unwrap().begin_drain();
     }
 }
 

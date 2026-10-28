@@ -1,0 +1,29 @@
+{
+  "empty": {
+    "footprint_mib": 63.09649658203125,
+    "resident_mib": 87.796875,
+    "cpu_seconds": 0.23854058333333333,
+    "idle_wakes": 0,
+    "interrupt_wakes": 18,
+    "vmmap_exit": 0,
+    "heap_exit": 0
+  },
+  "history": {
+    "footprint_mib": 71.550048828125,
+    "resident_mib": 152.890625,
+    "cpu_seconds": 0.8365107083333334,
+    "idle_wakes": 55,
+    "interrupt_wakes": 420,
+    "vmmap_exit": 0,
+    "heap_exit": 0
+  },
+  "cleared": {
+    "footprint_mib": 64.253173828125,
+    "resident_mib": 140.3125,
+    "cpu_seconds": 0.8500833333333334,
+    "idle_wakes": 55,
+    "interrupt_wakes": 425,
+    "vmmap_exit": 0,
+    "heap_exit": 0
+  }
+}

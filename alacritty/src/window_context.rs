@@ -226,6 +226,7 @@ impl WindowContext {
         // The event loop channel allows write requests from the event processor
         // to be sent to the pty loop and ultimately written to the pty.
         let loop_tx = event_loop.channel();
+        event_proxy.set_pty_sender(loop_tx.clone());
 
         // Kick off the I/O thread.
         let _io_thread = event_loop.spawn();

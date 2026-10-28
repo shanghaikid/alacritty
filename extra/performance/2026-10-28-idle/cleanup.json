@@ -1,0 +1,28 @@
+{
+  "temporary_rust_targets_remaining": [],
+  "rust_cleanup": "All dedicated targets removed by EXIT traps after their dependent checks/packaging, including failed rounds. Final targets l68mgh and 179ClR were verified removed.",
+  "other_task_artifacts_removed": [
+    "/private/tmp/alacritty-idle-memory/alacritty-shared-cache",
+    "/private/tmp/alacritty-idle-memory/alacritty-encoded-tails",
+    "/private/tmp/alacritty-idle-memory/alacritty-compact-index",
+    "/private/tmp/alacritty-idle-memory/alacritty-dynamic-gpu",
+    "/private/tmp/alacritty-idle-memory/alacritty-cold-reflow",
+    "/private/tmp/alacritty-idle-memory/package",
+    "/private/tmp/alacritty-idle-memory/gpu-volatile-probe.dylib",
+    "/private/tmp/alacritty-idle-memory/background-isolated.dylib",
+    "/private/tmp/alacritty-idle-memory/gpu_probe.dylib",
+    "/private/tmp/alacritty-idle-memory/background.dylib",
+    "/private/tmp/alacritty-idle-memory/accepted-frames-retry/frames.dylib",
+    "/private/tmp/alacritty-idle-memory/frames/frames.dylib",
+    "/private/tmp/alacritty-idle-memory/dynamic-frames/frames.dylib",
+    "/private/tmp/alacritty-idle-memory/accepted-frames/frames.dylib",
+    "/Users/zilliz/workspace/alacritty/extra/__pycache__"
+  ],
+  "retained": [
+    "final signed app",
+    "previous deliverable baselines",
+    "installed-app backups",
+    "benchmark raw data and reports"
+  ],
+  "global_cargo_caches_cleaned": false
+}
