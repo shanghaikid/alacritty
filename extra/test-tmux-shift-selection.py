@@ -29,7 +29,7 @@ def exercise(keys, line_numbers, mouse_aware=False):
         copier.write_text('#!/bin/sh\ncat > ' + shlex.quote(str(clipboard)) + '\n')
         copier.chmod(0o700)
         config = root / 'tmux.conf'
-        bindings = (Path(__file__).parent / 'tmux-shift-selection.conf').read_text().replace('pbcopy', str(copier))
+        bindings = (Path(__file__).parent / 'tmux-shift-selection.conf').read_text().replace('pbcopy', str(copier)).replace('~/.config/alacritty/tmux-mouse-anchor-input.py', shlex.quote(str(Path(__file__).resolve().parent / 'tmux-mouse-anchor-input.py')))
         config.write_text('set -g mouse on\nset -g status off\nset -g set-clipboard off\n'
                           f'set -g mode-keys {keys}\nset -g copy-mode-line-numbers {line_numbers}\n' + bindings)
         command = [TMUX, '-S', str(socket)]
@@ -41,7 +41,7 @@ def exercise(keys, line_numbers, mouse_aware=False):
             payload = (
                 "import os, sys, tty; tty.setraw(0); "
                 "print(''.join('L%03d abcdefghijklmnopqrstuvwxyz\\r\\n' % i for i in range(100)),end=''); "
-                "sys.stdout.write('\\x1b[?1002h\\x1b[?1006h'); sys.stdout.flush(); "
+                "sys.stdout.write('\\x1b[?1002h\\x1b[?1006h\\x1b[?2004h'); sys.stdout.flush(); "
                 f"output = open({str(received)!r}, 'ab', buffering=0)\n"
                 "while True: output.write(os.read(0, 4096))"
             )
@@ -79,6 +79,8 @@ def exercise(keys, line_numbers, mouse_aware=False):
                 assert received.read_bytes().endswith(b'input-test'), received.read_bytes()
         try:
             tick(.7)
+            # Re-sourcing must preserve the original keyboard bindings, not wrap wrappers.
+            tmux('source-file', str(config))
             assert tmux('display-message', '-p', '-t', 'test', '#{mouse_any_flag}') == str(int(mouse_aware))
             tmux('copy-mode', '-t', 'test')
             tmux('send-keys', '-t', 'test', '-X', 'history-top')
@@ -197,10 +199,40 @@ def exercise(keys, line_numbers, mouse_aware=False):
             word_or_line = snapshot()
             assert word_or_line['pane_in_mode'] and word_or_line['selection_present'], word_or_line
             assert not word_or_line['selection_active'], word_or_line
+            # Empty anchors are invisible but must not trap clicks or the first keystroke.
+            tmux('send-keys', '-t', 'test', '-X', 'cancel')
+            tick(.4)
+            mouse(0, 12, 3)
+            mouse(0, 12, 3, True)
+            assert snapshot()['pane_in_mode'] and not snapshot()['selection_present']
+            dismiss_selection()
+            if mouse_aware:
+                for typed in [b'hello', b'j-start', '中文'.encode(), b'\x1b[200~paste-text\x1b[201~']:
+                    tick(.4)
+                    mouse(0, 12, 3)
+                    mouse(0, 12, 3, True)
+                    assert snapshot()['pane_in_mode'] and not snapshot()['selection_present']
+                    assert tmux('show-options', '-pv', '-t', 'test', '@alacritty_mouse_anchor') == '1'
+                    binding = tmux('list-keys', '-T', 'copy-mode-vi' if keys == 'vi' else 'copy-mode', 'h' if keys == 'vi' else 'C-b')
+                    assert '@alacritty_mouse_anchor' in binding, binding
+                    offset = len(received.read_bytes())
+                    os.write(master, typed)
+                    tick(.3)
+                    assert not snapshot()['pane_in_mode'], (typed, snapshot())
+                    assert received.read_bytes()[offset:] == typed, (typed, received.read_bytes()[offset:])
+            # Explicit keyboard copy mode still uses its original navigation keys.
+            tmux('copy-mode', '-t', 'test')
+            before_key = tmux('display-message', '-p', '-t', 'test', '#{copy_cursor_y}')
+            os.write(master, b'k' if keys == 'vi' else b'\x10')
+            tick()
+            assert snapshot()['pane_in_mode'], snapshot()
+            after_key = tmux('display-message', '-p', '-t', 'test', '#{copy_cursor_y}')
+            assert int(after_key) == int(before_key) - 1, (before_key, after_key)
             print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'mouse_aware': mouse_aware, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
                               'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True,
-                              'plain_click_dismissed_selection': True,
+                              'plain_click_dismissed_selection': True, 'empty_anchor_dismissed': True,
+                              'manual_copy_navigation_preserved': True,
                               'click_and_typing_reached_app': mouse_aware}), flush=True)
         finally:
             subprocess.run(command + ['kill-server'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
