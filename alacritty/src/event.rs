@@ -1985,6 +1985,24 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                     self.ctx.display.pending_update.dirty = true;
                 },
                 EventType::Terminal(event) => match event {
+                    TerminalEvent::CommandFinished { status, elapsed } => {
+                        if self
+                            .ctx
+                            .config
+                            .terminal
+                            .should_notify(self.ctx.terminal.is_focused, elapsed)
+                        {
+                            self.ctx.window().set_urgent(true);
+                            #[cfg(target_os = "macos")]
+                            crate::macos::notification::command_finished(
+                                self.ctx.window().id().into(),
+                                status,
+                                elapsed,
+                            );
+                            #[cfg(not(target_os = "macos"))]
+                            let _ = status;
+                        }
+                    },
                     TerminalEvent::ProgramStatusChanged => (),
                     TerminalEvent::PtyWriteStatic(text) => {
                         self.ctx.notifier.notify(text.as_bytes())

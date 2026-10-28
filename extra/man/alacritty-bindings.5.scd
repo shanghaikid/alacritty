@@ -607,3 +607,10 @@ Found a bug? Please report it at _https://github.com/alacritty/alacritty/issues_
 
 - Christian Duerr <contact@christianduerr.com>
 - Kirill Chibisov <contact@kchibisov.com>
+
+# SHELL INTEGRATION (MACOS)
+
+Command-Up and Command-Down navigate integrated shell commands and select their
+output. Command-Shift-C copies the navigated command's output, or the last
+completed command when not navigating. These bindings are disabled in alternate
+screen applications and while searching.

@@ -631,6 +631,25 @@ Windows: _"powershell"_
 
 	Default: _true_ in this fork's macOS application; _false_ in the terminal library.
 
+*shell_integration* = _true_ | _false_
+
+	Automatically load OSC 133 hooks in interactive zsh sessions. User startup
+	files remain unchanged. Explicit script/-c/-f commands and shells inside
+	tmux/screen are not integrated automatically. Other shells can emit OSC 133
+	markers themselves. Default: _true_. Applies to newly created terminals.
+
+*notify_on_command_finish* = _true_ | _false_
+
+	Notify when an integrated shell command finishes in an unfocused terminal.
+	On macOS this uses native desktop notifications (subject to system permission
+	and Focus settings); other platforms set window urgency. Notifications contain
+	duration and exit status, not the command or its output. Default: _true_.
+
+*command_finish_threshold* = _<integer>_
+
+	Minimum command runtime in seconds for completion notifications. Default: _10_.
+	Values below one are treated as one second.
+
 *osc52* = _"Disabled"_ | _"OnlyCopy"_ | _"OnlyPaste"_ | _"CopyPaste"_
 
 	Controls the ability to write to the system clipboard with the _OSC 52_
@@ -859,6 +878,16 @@ _https://docs.rs/winit/latest/winit/keyboard/enum.Key.html#variant.Dead_
 			Scroll one line down.
 		*ScrollToTop*
 			Scroll all the way to the top.
+		*ScrollToPreviousPrompt* / *ScrollToNextPrompt*
+			Navigate OSC 133 command markers and select the command output.
+			macOS defaults: Command-Up / Command-Down. Normal screen only.
+
+		*CopyCommandOutput* / *SelectCommandOutput*
+			Copy or select the output of the navigated command, or the last completed
+			command when not navigating. macOS copy default: Command-Shift-C.
+			Commands whose output start has left scrollback are unavailable.
+			Up to 4096 commands are tracked; a new prompt resets navigation.
+
 		*ScrollToBottom*
 			Scroll all the way to the bottom.
 		*ClearHistory*

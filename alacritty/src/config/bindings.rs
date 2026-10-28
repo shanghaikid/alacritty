@@ -157,6 +157,13 @@ pub enum Action {
     /// Scroll all the way to the top.
     ScrollToTop,
 
+    /// Navigate shell prompt markers (OSC 133).
+    ScrollToPreviousPrompt,
+    ScrollToNextPrompt,
+    /// Copy or select output of the navigated command, or last completed command.
+    CopyCommandOutput,
+    SelectCommandOutput,
+
     /// Scroll all the way to the bottom.
     ScrollToBottom,
 
@@ -589,6 +596,9 @@ fn macos_key_bindings() -> Vec<KeyBinding> {
         // Legacy tmux collapses modified Enter into CR. Codex accepts Ctrl-J as a newline.
         // When an app enables the kitty protocol, let native key encoding preserve Shift.
         Enter, ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH, ~BindingMode::DISAMBIGUATE_ESC_CODES, ~BindingMode::REPORT_ALL_KEYS_AS_ESC; Action::Esc("\n".into());
+        ArrowUp, ModifiersState::SUPER, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH; Action::ScrollToPreviousPrompt;
+        ArrowDown, ModifiersState::SUPER, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH; Action::ScrollToNextPrompt;
+        "c", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH; Action::CopyCommandOutput;
         // Tabbing api.
         "t",    ModifiersState::SUPER;                                         Action::CreateNewTab;
         "]",    ModifiersState::SUPER | ModifiersState::SHIFT;                 Action::SelectNextTab;

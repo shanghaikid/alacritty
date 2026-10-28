@@ -142,6 +142,7 @@ impl UiConfig {
         PtyOptions {
             working_directory,
             shell,
+            shell_integration: self.terminal.shell_integration,
             drain_on_exit: false,
             env: HashMap::new(),
             #[cfg(target_os = "windows")]

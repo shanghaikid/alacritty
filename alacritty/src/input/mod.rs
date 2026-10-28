@@ -386,6 +386,32 @@ impl<T: EventListener> Execute<T> for Action {
             },
             Action::ScrollLineUp => ctx.scroll(Scroll::Delta(1)),
             Action::ScrollLineDown => ctx.scroll(Scroll::Delta(-1)),
+            Action::ScrollToPreviousPrompt | Action::ScrollToNextPrompt => {
+                if let Some(delta) = ctx
+                    .terminal_mut()
+                    .shell_prompt_scroll(matches!(self, Action::ScrollToPreviousPrompt))
+                {
+                    ctx.scroll(Scroll::Delta(delta));
+                    ctx.clear_selection();
+                    if let Some((start, end)) = ctx.terminal().command_output_range() {
+                        ctx.start_selection(SelectionType::Simple, start, Side::Left);
+                        ctx.update_selection(end, Side::Right);
+                    }
+                    ctx.mark_dirty();
+                }
+            },
+            Action::CopyCommandOutput => {
+                if let Some(text) = ctx.terminal().command_output_to_string() {
+                    ctx.clipboard_mut().store(ClipboardType::Clipboard, text);
+                }
+            },
+            Action::SelectCommandOutput => {
+                if let Some((start, end)) = ctx.terminal().command_output_range() {
+                    ctx.start_selection(SelectionType::Simple, start, Side::Left);
+                    ctx.update_selection(end, Side::Right);
+                    ctx.mark_dirty();
+                }
+            },
             Action::ScrollToTop => {
                 ctx.scroll(Scroll::Top);
 

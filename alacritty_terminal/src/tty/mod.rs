@@ -9,6 +9,8 @@ use std::{env, io};
 use polling::{Event, PollMode, Poller};
 
 #[cfg(not(windows))]
+mod shell_integration;
+#[cfg(not(windows))]
 mod unix;
 #[cfg(not(windows))]
 pub use self::unix::*;
@@ -28,6 +30,9 @@ pub struct Options {
     ///
     /// [`None`] will use the default shell.
     pub shell: Option<Shell>,
+
+    /// Enable automatic integration for compatible interactive shells.
+    pub shell_integration: bool,
 
     /// Shell startup directory.
     pub working_directory: Option<PathBuf>,

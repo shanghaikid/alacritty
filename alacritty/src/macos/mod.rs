@@ -4,6 +4,7 @@ use objc2_foundation::{NSDictionary, NSString, NSUserDefaults, ns_string};
 pub mod clipboard;
 pub mod hotkey;
 pub mod locale;
+pub mod notification;
 pub mod path_hint;
 pub mod proc;
 

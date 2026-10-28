@@ -45,6 +45,9 @@ pub enum Event {
     /// Coalesced program status change; the UI reads the latest shared state.
     ProgramStatusChanged,
 
+    /// A shell command completed; no command text is sent to desktop notifications.
+    CommandFinished { status: Option<u32>, elapsed: std::time::Duration },
+
     /// Request to write the text area size.
     TextAreaSizeRequest(Arc<dyn Fn(WindowSize) -> String + Sync + Send + 'static>),
 
@@ -72,6 +75,9 @@ impl Debug for Event {
             Event::TextAreaSizeRequest(_) => write!(f, "TextAreaSizeRequest"),
             Event::ColorRequest(index, _) => write!(f, "ColorRequest({index})"),
             Event::PtyWriteStatic(text) => write!(f, "PtyWriteStatic({text})"),
+            Event::CommandFinished { status, elapsed } => {
+                write!(f, "CommandFinished({status:?}, {elapsed:?})")
+            },
             Event::ProgramStatusChanged => write!(f, "ProgramStatusChanged"),
             Event::PtyWrite(text) => write!(f, "PtyWrite({text})"),
             Event::Title(title) => write!(f, "Title({title})"),

@@ -30,6 +30,7 @@ pub mod cell;
 pub mod color;
 mod grapheme;
 pub mod search;
+mod shell;
 
 /// Minimum number of columns.
 ///
@@ -319,6 +320,7 @@ pub struct Term<T> {
 
     /// Protocol records belong to the PTY, independently of either screen.
     pub program_status: alacritty_status::Store,
+    shell: shell::ShellState,
     status_dirty: bool,
     status_event_pending: bool,
 
@@ -455,6 +457,7 @@ impl<T> Term<T> {
             colors: color::Colors::default(),
             title_stack: Default::default(),
             program_status: Default::default(),
+            shell: Default::default(),
             status_dirty: false,
             status_event_pending: false,
             is_focused: Default::default(),
@@ -694,8 +697,13 @@ impl<T> Term<T> {
         self.vi_mode_cursor.point.line += delta;
 
         let is_alt = self.mode.contains(TermMode::ALT_SCREEN);
-        self.grid.resize(!is_alt, num_lines, num_cols);
-        self.inactive_grid.resize(is_alt, num_lines, num_cols);
+        if is_alt {
+            self.grid.resize(false, num_lines, num_cols);
+            self.shell.resize(&mut self.inactive_grid, num_lines, num_cols);
+        } else {
+            self.shell.resize(&mut self.grid, num_lines, num_cols);
+            self.inactive_grid.resize(false, num_lines, num_cols);
+        }
 
         // Invalidate selection and tabs only when necessary.
         if old_cols != num_cols {
@@ -779,6 +787,9 @@ impl<T> Term<T> {
 
         // Scroll between origin and bottom
         self.grid.scroll_down(&region, lines);
+        if !self.mode.contains(TermMode::ALT_SCREEN) {
+            self.shell.scroll(region.start, region.end, lines as i32, self.grid.topmost_line());
+        }
         self.mark_fully_damaged();
     }
 
@@ -798,6 +809,14 @@ impl<T> Term<T> {
         self.selection = self.selection.take().and_then(|s| s.rotate(self, &region, lines as i32));
 
         self.grid.scroll_up(&region, lines);
+        if !self.mode.contains(TermMode::ALT_SCREEN) {
+            if origin == 0 && region.end == self.screen_lines() {
+                self.shell.queue_scroll(lines, self.grid.topmost_line());
+            } else {
+                let start = if origin == 0 { Line(i32::MIN) } else { origin };
+                self.shell.scroll(start, region.end, -(lines as i32), self.grid.topmost_line());
+            }
+        }
 
         // Scroll vi mode cursor.
         let viewport_top = Line(-(self.grid.display_offset() as i32));
@@ -1107,6 +1126,10 @@ impl<T: EventListener> Handler for Term<T> {
             },
             Outcome::Unchanged | Outcome::Rejected => (),
         }
+    }
+
+    fn shell_marker(&mut self, marker: u8, status: Option<u32>) {
+        self.handle_shell_marker(marker, status);
     }
 
     fn shell_prompt(&mut self) {
@@ -1957,6 +1980,16 @@ impl<T: EventListener> Handler for Term<T> {
     fn clear_screen(&mut self, mode: ansi::ClearMode) {
         trace!("Clearing screen: {mode:?}");
         let bg = self.grid.cursor.template.bg;
+        if !self.mode.contains(TermMode::ALT_SCREEN) {
+            let cursor = self.grid.cursor.point;
+            match mode {
+                ansi::ClearMode::Above => {
+                    self.shell.map_points(|p| (p.line < 0 || p > cursor).then_some(p))
+                },
+                ansi::ClearMode::Below => self.shell.map_points(|p| (p < cursor).then_some(p)),
+                _ => (),
+            }
+        }
 
         let screen_lines = self.screen_lines();
 
@@ -1998,7 +2031,14 @@ impl<T: EventListener> Handler for Term<T> {
                 } else {
                     let old_offset = self.grid.display_offset();
 
-                    self.grid.clear_viewport();
+                    let delta = self.grid.clear_viewport();
+                    // clear_viewport pushes through the last occupied line into history.
+                    self.shell.scroll(
+                        Line(i32::MIN),
+                        Line(screen_lines as i32),
+                        -(delta as i32),
+                        self.grid.topmost_line(),
+                    );
 
                     // Compute number of lines scrolled by clearing the viewport.
                     let lines = self.grid.display_offset().saturating_sub(old_offset);
@@ -2011,6 +2051,7 @@ impl<T: EventListener> Handler for Term<T> {
             },
             ansi::ClearMode::Saved if self.history_size() > 0 => {
                 self.grid.clear_history();
+                self.shell.map_points(|p| (p.line >= 0).then_some(p));
 
                 self.vi_mode_cursor.point.line =
                     self.vi_mode_cursor.point.line.grid_clamp(self, Boundary::Cursor);
@@ -2040,6 +2081,7 @@ impl<T: EventListener> Handler for Term<T> {
     /// Reset all important fields in the term struct.
     #[inline]
     fn reset_state(&mut self) {
+        self.shell = Default::default();
         self.status_dirty |= self.program_status.reset();
         if self.mode.contains(TermMode::ALT_SCREEN) {
             mem::swap(&mut self.grid, &mut self.inactive_grid);

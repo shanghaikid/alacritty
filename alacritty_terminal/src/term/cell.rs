@@ -124,6 +124,8 @@ impl ResetDiscriminant<Color> for Cell {
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CellExtra {
+    #[cfg_attr(feature = "serde", serde(skip))]
+    reflow_anchor: Option<std::num::NonZeroU32>,
     zerowidth: smallvec::SmallVec<[char; 2]>,
     underline_color: Option<Color>,
     hyperlink: Option<Hyperlink>,
@@ -168,6 +170,19 @@ impl Default for Cell {
 }
 
 impl Cell {
+    pub(super) fn reflow_anchor(&self) -> Option<usize> {
+        self.extra.as_ref()?.reflow_anchor.map(|id| id.get() as usize - 1)
+    }
+
+    pub(super) fn set_reflow_anchor(&mut self, anchor: Option<usize>) {
+        let extra = self.extra.get_or_insert_with(Default::default);
+        Arc::make_mut(extra).reflow_anchor =
+            anchor.and_then(|id| std::num::NonZeroU32::new(id as u32 + 1));
+        if **extra == CellExtra::default() {
+            self.extra = None;
+        }
+    }
+
     pub(crate) fn mark_packed_wrapped(row: &mut grid::PackedRow<Self>, column: usize) -> bool {
         row.expanded.take();
         let offset = column * 4;
@@ -283,6 +298,7 @@ impl Cell {
                 // Preserve shared render snapshots without first cloning the
                 // grapheme data we are about to discard.
                 *extra = Arc::new(CellExtra {
+                    reflow_anchor: None,
                     zerowidth: Default::default(),
                     underline_color: extra.underline_color,
                     hyperlink: extra.hyperlink.clone(),
@@ -397,6 +413,9 @@ impl GridCell for Cell {
         let mut templates: Vec<Cell> = Vec::new();
         let mut encoded = Vec::with_capacity(count * 6);
         for cell in rows.iter().flat_map(|row| row.iter()) {
+            if cell.reflow_anchor().is_some() {
+                return None;
+            }
             let index = templates.iter().position(|template| {
                 template.fg == cell.fg
                     && template.bg == cell.bg
@@ -419,6 +438,7 @@ impl GridCell for Cell {
                     let extra = cell.extra.as_ref().and_then(|extra| {
                         (extra.underline_color.is_some() || extra.hyperlink.is_some()).then(|| {
                             Arc::new(CellExtra {
+                                reflow_anchor: None,
                                 zerowidth: Default::default(),
                                 underline_color: extra.underline_color,
                                 hyperlink: extra.hyperlink.clone(),
@@ -481,7 +501,8 @@ impl GridCell for Cell {
 
     #[inline]
     fn is_empty(&self) -> bool {
-        (self.c == ' ' || self.c == '\t')
+        self.reflow_anchor().is_none()
+            && (self.c == ' ' || self.c == '\t')
             && self.bg == Color::Named(NamedColor::Background)
             && self.fg == Color::Named(NamedColor::Foreground)
             && !self.flags.intersects(

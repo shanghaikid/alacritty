@@ -102,6 +102,7 @@ fn get_pw_entry(buf: &mut [i8; 1024]) -> Result<Passwd<'_>> {
 }
 
 pub struct Pty {
+    _shell_integration: Option<tempfile::TempDir>,
     child: Child,
     file: File,
     signals: UnixStream,
@@ -240,6 +241,8 @@ pub fn from_fd(config: &Options, window_id: u64, master: OwnedFd, slave: OwnedFd
         builder.env(key, value);
     }
 
+    let shell_integration = super::shell_integration::prepare(config, &user.shell, &mut builder)?;
+
     // Prevent child processes from inheriting linux-specific startup notification env.
     builder.env_remove("XDG_ACTIVATION_TOKEN");
     builder.env_remove("DESKTOP_STARTUP_ID");
@@ -298,6 +301,7 @@ pub fn from_fd(config: &Options, window_id: u64, master: OwnedFd, slave: OwnedFd
             }
 
             let pty = Pty {
+                _shell_integration: shell_integration,
                 child,
                 file: File::from(master),
                 signals,

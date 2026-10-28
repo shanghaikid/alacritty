@@ -6,6 +6,7 @@ members = [
     "alacritty_config",
     "alacritty_config_derive",
 ]
+exclude = ["vendor/vte"]
 resolver = "2"
 
 [workspace.package]
@@ -22,5 +23,5 @@ toml = "0.9.11"
 toml_edit = "0.24.0"
 
 [patch.crates-io]
-vte = { git = "https://github.com/shanghaikid/vte.git", rev = "7cfdf88e709ab444ed9d69b6bd16c02d7c092839" }
+vte = { path = "vendor/vte" }
 winit = { git = "https://github.com/shanghaikid/winit.git", rev = "c73f0893b0f3d4e2bb6231d94e742434f36d330c" }

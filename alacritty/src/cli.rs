@@ -198,6 +198,7 @@ impl From<TerminalOptions> for PtyOptions {
         PtyOptions {
             working_directory: options.working_directory.take(),
             shell: options.command().map(Into::into),
+            shell_integration: true,
             drain_on_exit: options.hold,
             env: HashMap::new(),
             #[cfg(target_os = "windows")]
