@@ -105,6 +105,33 @@ def exercise(keys, line_numbers):
             assert rapid['selection_start_y'] == original['selection_start_y'], rapid
             assert rapid['selection_end_y'] == before['history_size'] - before['scroll_position'] + 7, rapid
             copied_lines = len(clipboard.read_text().splitlines())
+            # Empty anchors count too: click, release, scroll, then Shift-click.
+            tick(.4)
+            mouse(0, 12, 3)
+            mouse(0, 12, 3, True)
+            empty = snapshot()
+            assert not empty['selection_present'] and not empty['selection_active'], empty
+            os.write(master, b'\x1b[<69;20;6M' * 10)
+            tick(.3)
+            scrolled = snapshot()
+            mouse(4, 22, 7)
+            mouse(4, 22, 7, True)
+            expanded = snapshot()
+            assert expanded['selection_start_x'] == empty['selection_start_x'], (empty, expanded)
+            assert expanded['selection_start_y'] == empty['selection_start_y'], (empty, expanded)
+            assert expanded['selection_end_y'] == scrolled['history_size'] - scrolled['scroll_position'] + 6, (scrolled, expanded)
+            # The same two-click workflow can begin in the live pane, outside copy mode.
+            tmux('send-keys', '-t', 'test', '-X', 'cancel')
+            tick(.4)
+            mouse(0, 12, 3)
+            mouse(0, 12, 3, True)
+            live_anchor = snapshot()
+            assert live_anchor['pane_in_mode'] and not live_anchor['selection_present'], live_anchor
+            mouse(4, 22, 7)
+            mouse(4, 22, 7, True)
+            live_range = snapshot()
+            assert live_range['selection_start_y'] == live_anchor['selection_start_y'], (live_anchor, live_range)
+            assert live_range['selection_end_y'] == live_anchor['history_size'] + 6, live_range
             # Double/triple clicks can start in the live pane, outside copy mode.
             tmux('send-keys', '-t', 'test', '-X', 'cancel')
             tick(.4)
@@ -117,7 +144,7 @@ def exercise(keys, line_numbers):
             assert not word_or_line['selection_active'], word_or_line
             print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
-                              'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True}))
+                              'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True}))
         finally:
             subprocess.run(command + ['kill-server'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
