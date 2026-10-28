@@ -64,6 +64,19 @@ def exercise(keys, line_numbers, mouse_aware=False):
         def mouse(code, x, y, release=False):
             os.write(master, f'\x1b[<{code};{x};{y}{"m" if release else "M"}'.encode())
             tick()
+        def dismiss_selection():
+            tick(.4)
+            offset = len(received.read_bytes()) if mouse_aware else 0
+            mouse(0, 14, 10)
+            mouse(0, 14, 10, True)
+            assert not snapshot()['pane_in_mode'], snapshot()
+            assert tmux('display-message', '-p', '-t', 'test', '#{selection_start_y}') == ''
+            if mouse_aware:
+                events = received.read_bytes()[offset:]
+                assert b'\x1b[<0;14;10M' in events and b'\x1b[<0;14;10m' in events, events
+                os.write(master, b'input-test')
+                tick()
+                assert received.read_bytes().endswith(b'input-test'), received.read_bytes()
         try:
             tick(.7)
             assert tmux('display-message', '-p', '-t', 'test', '#{mouse_any_flag}') == str(int(mouse_aware))
@@ -115,6 +128,12 @@ def exercise(keys, line_numbers, mouse_aware=False):
             assert rapid['selection_start_y'] == original['selection_start_y'], rapid
             assert rapid['selection_end_y'] == before['history_size'] - before['scroll_position'] + 7, rapid
             copied_lines = len(clipboard.read_text().splitlines())
+            # A plain click dismisses a selection even while viewing scrollback,
+            # forwards the click to the app, and restores keyboard input.
+            dismiss_selection()
+            tmux('copy-mode', '-t', 'test')
+            tmux('send-keys', '-t', 'test', '-X', 'history-top')
+            received_before_selection = received.read_bytes() if mouse_aware else b''
             # Empty anchors count too: click, release, scroll, then Shift-click.
             tick(.4)
             mouse(0, 12, 3)
@@ -143,8 +162,17 @@ def exercise(keys, line_numbers, mouse_aware=False):
             assert live_range['selection_start_y'] == live_anchor['selection_start_y'], (live_anchor, live_range)
             assert live_range['selection_end_y'] == live_anchor['history_size'] + 6, live_range
             if mouse_aware:
-                # Plain clicks must never leak to the application, even when it owns the mouse.
-                assert received.read_bytes() == b'', received.read_bytes()
+                # Starting/extending a selection must not leak clicks to the application.
+                assert received.read_bytes() == received_before_selection, received.read_bytes()
+            dismiss_selection()
+            if mouse_aware:
+                # Build a fresh selection to test Option-click dismissal as well.
+                tick(.4)
+                mouse(0, 12, 3)
+                mouse(0, 12, 3, True)
+                mouse(4, 22, 7)
+                mouse(4, 22, 7, True)
+                assert snapshot()['selection_present'], snapshot()
                 # Option-click leaves copy mode and forwards a complete gesture to the app.
                 mouse(8, 14, 5)
                 mouse(8, 14, 5, True)
@@ -158,7 +186,7 @@ def exercise(keys, line_numbers, mouse_aware=False):
                 mouse(8, 16, 6, True)
                 assert b'\x1b[<40;16;6M' in received.read_bytes(), received.read_bytes()
                 assert not snapshot()['pane_in_mode'], snapshot()
-                tmux('copy-mode', '-t', 'test')
+            tmux('copy-mode', '-t', 'test')
             # Double/triple clicks can start in the live pane, outside copy mode.
             tmux('send-keys', '-t', 'test', '-X', 'cancel')
             tick(.4)
@@ -171,7 +199,9 @@ def exercise(keys, line_numbers, mouse_aware=False):
             assert not word_or_line['selection_active'], word_or_line
             print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'mouse_aware': mouse_aware, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
-                              'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True}))
+                              'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True,
+                              'plain_click_dismissed_selection': True,
+                              'click_and_typing_reached_app': mouse_aware}), flush=True)
         finally:
             subprocess.run(command + ['kill-server'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
