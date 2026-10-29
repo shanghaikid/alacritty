@@ -784,7 +784,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         }
     }
 
-    pub fn mouse_wheel_input(&mut self, delta: MouseScrollDelta, phase: TouchPhase) {
+    pub fn mouse_wheel_input(&mut self, delta: MouseScrollDelta, _phase: TouchPhase) {
         let multiplier = self.ctx.config().scrolling.multiplier;
         match delta {
             MouseScrollDelta::LineDelta(columns, lines) => {
@@ -797,24 +797,23 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
                 );
             },
             MouseScrollDelta::PixelDelta(mut lpos) => {
-                match phase {
-                    TouchPhase::Started => {
-                        // Reset offset to zero.
-                        self.ctx.mouse_mut().accumulated_scroll = Default::default();
-                    },
-                    TouchPhase::Moved => {
-                        // When the angle between (x, 0) and (x, y) is lower than ~25 degrees
-                        // (cosine is larger that 0.9) we consider this scrolling as horizontal.
-                        if lpos.x.abs() / lpos.x.hypot(lpos.y) > 0.9 {
-                            lpos.y = 0.;
-                        } else {
-                            lpos.x = 0.;
-                        }
-
-                        self.scroll_terminal(lpos.x, lpos.y, multiplier as f64);
-                    },
-                    _ => (),
+                // Started and Ended events can carry motion too. In particular,
+                // macOS reports the first momentum delta with Started.
+                // Keep the fractional remainder across phases as well: resetting
+                // it at that boundary loses part of the same physical gesture.
+                if lpos.x == 0. && lpos.y == 0. {
+                    return;
                 }
+
+                // When the angle between (x, 0) and (x, y) is lower than ~25 degrees
+                // (cosine is larger that 0.9) we consider this scrolling as horizontal.
+                if lpos.x.abs() / lpos.x.hypot(lpos.y) > 0.9 {
+                    lpos.y = 0.;
+                } else {
+                    lpos.x = 0.;
+                }
+
+                self.scroll_terminal(lpos.x, lpos.y, multiplier as f64);
             },
         }
     }
@@ -1243,9 +1242,14 @@ mod tests {
         pub modifiers: Modifiers,
         config: &'a UiConfig,
         inline_search_state: &'a mut InlineSearchState,
+        pty_output: std::cell::RefCell<Vec<u8>>,
     }
 
     impl<T: EventListener> super::ActionContext<T> for ActionContext<'_, T> {
+        fn write_to_pty<B: Into<Cow<'static, [u8]>>>(&self, data: B) {
+            self.pty_output.borrow_mut().extend_from_slice(&data.into());
+        }
+
         fn search_next(
             &mut self,
             _origin: Point,
@@ -1367,6 +1371,72 @@ mod tests {
     }
 
     #[test]
+    fn pixel_scroll_preserves_motion_at_gesture_and_momentum_boundaries() {
+        // The same distances must reach both terminal history and a mouse-aware
+        // application such as tmux, regardless of the phase carrying the delta.
+        for reporting in [false, true] {
+            let mut cfg = UiConfig::default();
+            cfg.scrolling.multiplier = 1;
+            let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
+            let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+            let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+            parser.advance(&mut terminal, "history line\r\n".repeat(100).as_bytes());
+            if reporting {
+                parser.advance(&mut terminal, b"\x1b[?1000h\x1b[?1006h");
+            }
+            let selection = alacritty_terminal::selection::Selection::new(
+                SelectionType::Simple,
+                Point::new(alacritty_terminal::index::Line(0), Column(0)),
+                Side::Left,
+            );
+            terminal.selection = Some(selection.clone());
+            let mut mouse = Mouse::default();
+            let mut clipboard = Clipboard::new_nop();
+            let mut message_buffer = MessageBuffer::default();
+            let mut inline_search_state = InlineSearchState::default();
+            let mut processor = Processor::new(ActionContext {
+                terminal: &mut terminal,
+                size_info: &size,
+                mouse: &mut mouse,
+                clipboard: &mut clipboard,
+                message_buffer: &mut message_buffer,
+                modifiers: Default::default(),
+                config: &cfg,
+                inline_search_state: &mut inline_search_state,
+                pty_output: Default::default(),
+            });
+
+            for (phase, pixels, total) in [
+                (TouchPhase::Started, 6., 0),
+                (TouchPhase::Moved, 6., 1),
+                (TouchPhase::Ended, 12., 2),
+                (TouchPhase::Started, 6., 2),
+                (TouchPhase::Ended, 0., 2),
+                // macOS sends a new Started event for momentum.
+                (TouchPhase::Started, 6., 3),
+                (TouchPhase::Moved, 12., 4),
+                (TouchPhase::Ended, 0., 4),
+                (TouchPhase::Cancelled, 0., 4),
+            ] {
+                processor.mouse_wheel_input(
+                    MouseScrollDelta::PixelDelta(PhysicalPosition::new(0., pixels)),
+                    phase,
+                );
+                if reporting {
+                    assert_eq!(
+                        *processor.ctx.pty_output.borrow(),
+                        b"\x1b[<64;1;1M".repeat(total),
+                        "phase {phase:?} lost or duplicated motion",
+                    );
+                } else {
+                    assert_eq!(processor.ctx.terminal.grid().display_offset(), total);
+                    assert_eq!(processor.ctx.terminal.selection.as_ref(), Some(&selection));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn shift_passthrough_keeps_mouse_events_in_the_application() {
         assert!(mouse_reporting_override(ModifiersState::SHIFT, false));
         assert!(!mouse_reporting_override(ModifiersState::SHIFT, true));
@@ -1408,6 +1478,7 @@ mod tests {
                 modifiers: modifiers.into(),
                 message_buffer: &mut message_buffer,
                 inline_search_state: &mut inline_search_state,
+                pty_output: Default::default(),
                 config: &cfg,
             };
             let mut processor = Processor::new(context);
@@ -1470,6 +1541,7 @@ mod tests {
                     modifiers: ModifiersState::SHIFT.into(),
                     config: &cfg,
                     inline_search_state: &mut inline_search_state,
+                    pty_output: Default::default(),
                 });
 
                 // The first click can be only an empty anchor, or an existing dragged range.
@@ -1527,6 +1599,7 @@ mod tests {
             modifiers: ModifiersState::SHIFT.into(),
             config: &cfg,
             inline_search_state: &mut inline_search_state,
+            pty_output: Default::default(),
         });
         let first = Point::new(Line(0), Column(1));
         processor.on_left_click(first);
@@ -1586,6 +1659,7 @@ mod tests {
                     modifiers: Default::default(),
                     message_buffer: &mut message_buffer,
                     inline_search_state: &mut inline_search_state,
+                    pty_output: Default::default(),
                     config: &cfg,
                 };
 

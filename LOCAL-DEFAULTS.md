@@ -174,15 +174,30 @@ CPU benchmarks measure individual operations, not overall application speed.
 
 Codex's alternate-screen transcript keeps its history inside the application.
 Entering tmux copy mode freezes the visible screen; it cannot scroll that internal
-history. Selection across that internal history is not currently supported by
-these tmux bindings.
+history. Mouse-aware alternate-screen programs now receive ordinary clicks,
+double/triple clicks, and Shift-clicks directly, so the application can keep its
+selection attached to its own history. Main-screen shell output keeps the tmux
+single-click anchor and Shift-click selection bindings. Option still forwards
+mouse gestures to the application; explicit keyboard tmux copy mode is unchanged.
 
 Do not enable Codex's `tui.raw_output_mode` and `tui.alternate_screen = "never"`
-as a workaround here. In the tested local resume flow, the pane remained in the
-alternate screen with no tmux history and mouse reporting disabled, so normal
-wheel scrolling regressed. Those experimental overrides have been removed from
-the local Codex configuration. Restoring startup settings requires restarting
-the Codex client; it does not change an already running client's display mode.
+as a workaround here. The earlier experiment did not establish working resumed
+scrollback and those overrides have been removed. The installed Codex 0.165.0
+already supports selecting a character, scrolling while retaining that selection,
+and Shift-clicking to extend it in its normal fullscreen transcript. A bare click
+without a selected range is handled by Codex itself; tmux's empty-anchor behavior
+only applies to tmux selections.
+
+`python3 extra/test-codex-tmux-selection.py` exercises the installed Codex with
+synthetic resumed history in an isolated tmux server and config directory. It
+submits no prompt, uses no account, disables clipboard copying, and verifies
+selection retention, Shift extension, composer input, and top status tabs. A
+negative control reproduces the old unconditional click-to-copy-mode freeze.
+
+Alacritty also consumes pixel scroll deltas in every gesture phase and retains
+fractional rows across phase changes. macOS reports the start of momentum as a
+new `Started` event, so discarding that event or clearing its remainder makes
+trackpad scrolling lose motion at the transition.
 The tmux selection configuration also keeps a 20 ms escape-sequence timeout so
 fragmented mouse reports do not leak into the application's text input.
 
