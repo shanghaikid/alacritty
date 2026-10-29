@@ -39,6 +39,32 @@ def selected_text(capture):
     return ''.join(selected)
 
 
+def stop_fixture_daemons(config_dir):
+    """Codex can leave a detached daemon; only stop binaries inside this fixture."""
+    prefix = str(config_dir.resolve()) + os.sep
+
+    def owned_pids():
+        processes = subprocess.check_output(['ps', '-axo', 'pid=,comm='], text=True)
+        result = []
+        for line in processes.splitlines():
+            pid, executable = line.strip().split(None, 1)
+            if str(Path(executable).resolve()).startswith(prefix):
+                result.append(int(pid))
+        return result
+
+    for attempt in range(50):
+        remaining = owned_pids()
+        if not remaining:
+            return
+        for pid in remaining:
+            try:
+                os.kill(pid, signal.SIGTERM if attempt < 30 else signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        time.sleep(.1)
+    raise RuntimeError(f'Fixture processes did not exit: {owned_pids()}')
+
+
 def exercise(tmux_binary, codex_binary):
     with tempfile.TemporaryDirectory(prefix='alacritty-codex-selection-') as directory:
         root = Path(directory)
@@ -224,6 +250,7 @@ copy_on_select = "never"
                 else:
                     os.kill(pid, signal.SIGTERM)
                     os.waitpid(pid, 0)
+            stop_fixture_daemons(config_dir)
 
 
 if __name__ == '__main__':
