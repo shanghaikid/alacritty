@@ -207,7 +207,7 @@ def exercise(keys, line_numbers, mouse_aware=False):
             assert snapshot()['pane_in_mode'] and not snapshot()['selection_present']
             dismiss_selection()
             if mouse_aware:
-                for typed in [b'hello', b'j-start', '中文'.encode(), b'\x1b[200~paste-text\x1b[201~']:
+                for typed in [b'hello', b'j-start', b';literal', '中文'.encode(), b'\x1b[200~paste-text\x1b[201~']:
                     tick(.4)
                     mouse(0, 12, 3)
                     mouse(0, 12, 3, True)

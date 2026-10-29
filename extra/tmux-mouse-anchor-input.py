@@ -55,14 +55,24 @@ def install(tmux, socket):
             subprocess.run(command + ['source-file', '-'], input='\n'.join(originals) + '\n', text=True, check=True)
         keys.add('Any')  # Includes unbound printable characters and UTF-8 input.
         saved_keys = subprocess.check_output(command + ['list-keys', '-T', saved, '-F', '#{key_string}'], text=True).splitlines()
+        pending = []
         for key in sorted(keys):
-            args = command + ['bind-key', '-T', table, '\\;' if key == ';' else key, 'if-shell', '-F', condition,
+            args = ['bind-key', '-T', table, '\\;' if key == ';' else key, 'if-shell', '-F', condition,
                               'send-keys -X cancel; send-keys']
             if key in saved_keys:
                 # Replay the original key in its saved table. Unlike serializing
                 # command strings again, this preserves quoting and custom bindings.
                 args.append('switch-client -T ' + saved + '; send-keys -K')
-            subprocess.run(args, check=True)
+            pending.append(args)
+        # Loading this file is on the terminal startup path. Send bounded batches
+        # through one client per batch instead of spawning a client per key.
+        for start in range(0, len(pending), 64):
+            batch = []
+            for args in pending[start:start + 64]:
+                if batch:
+                    batch.append(';')
+                batch.extend(args)
+            subprocess.run(command + batch, check=True)
 
 
 if __name__ == '__main__':
