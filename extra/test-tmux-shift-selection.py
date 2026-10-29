@@ -228,11 +228,47 @@ def exercise(keys, line_numbers, mouse_aware=False):
             assert snapshot()['pane_in_mode'], snapshot()
             after_key = tmux('display-message', '-p', '-t', 'test', '#{copy_cursor_y}')
             assert int(after_key) == int(before_key) - 1, (before_key, after_key)
+            # Status-tab clicks must still reach root bindings while either tab
+            # is in copy mode. Use real status ranges and mouse coordinates.
+            first_index = tmux('display-message', '-p', '-t', 'test', '#{window_index}')
+            second_index = tmux('new-window', '-d', '-P', '-F', '#{window_index}', '-t', 'test', '-n', 'second', 'sleep 120')
+            tmux('set-option', '-g', 'status', 'on')
+            tmux('set-option', '-g', 'status-position', 'top')
+            tmux('set-option', '-g', 'status-format[0]',
+                 f'#[range=window|{first_index}]FIRST     #[range=window|{second_index}]SECOND    #[norange]')
+            first_target = 'test:' + first_index
+            second_target = 'test:' + second_index
+            tmux('copy-mode', '-t', second_target)
+            tmux('refresh-client', '-S')
+            tick(.3)
+            # First verify the tab's coordinates with no copy-mode interception.
+            tmux('send-keys', '-t', first_target, '-X', 'cancel')
+            for kind in ['none', 'empty', 'visible']:
+                tmux('select-window', '-t', first_target)
+                if kind != 'none':
+                    tmux('copy-mode', '-t', first_target)
+                    tmux('send-keys', '-t', first_target, '-X', 'clear-selection')
+                    mouse(0, 12, 4)
+                    mouse(0, 12, 4, True)
+                    if kind == 'visible':
+                        mouse(4, 22, 7)
+                        mouse(4, 22, 7, True)
+                tick(.4)
+                mouse(0, 13, 1)
+                mouse(0, 13, 1, True)
+                current = tmux('display-message', '-p', '#{window_index}')
+                assert current == second_index, ('status tab click', kind, current, second_index)
+                tick(.4)
+                mouse(0, 3, 1)
+                mouse(0, 3, 1, True)
+                assert tmux('display-message', '-p', '#{window_index}') == first_index
+                if kind != 'none':
+                    tmux('send-keys', '-t', first_target, '-X', 'cancel')
             print(json.dumps({'mode': keys, 'line_numbers': line_numbers, 'mouse_aware': mouse_aware, 'drag_retained': True,
                               'scroll_preserved_selection': True, 'shift_click_extended': True,
                               'repeated_shift_click': True, 'copied_lines': copied_lines, 'word_line_selection_retained': True, 'empty_anchor_after_scroll': True, 'empty_anchor_live_pane': True,
                               'plain_click_dismissed_selection': True, 'empty_anchor_dismissed': True,
-                              'manual_copy_navigation_preserved': True,
+                              'manual_copy_navigation_preserved': True, 'status_tabs_work_in_copy_mode': True,
                               'click_and_typing_reached_app': mouse_aware}), flush=True)
         finally:
             subprocess.run(command + ['kill-server'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
