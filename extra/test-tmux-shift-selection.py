@@ -30,8 +30,10 @@ def exercise(keys, line_numbers, mouse_aware=False):
         copier.chmod(0o700)
         config = root / 'tmux.conf'
         bindings = (Path(__file__).parent / 'tmux-shift-selection.conf').read_text().replace('pbcopy', str(copier)).replace('~/.config/alacritty/tmux-mouse-anchor-input.py', shlex.quote(str(Path(__file__).resolve().parent / 'tmux-mouse-anchor-input.py')))
-        config.write_text('set -g mouse on\nset -g status off\nset -g set-clipboard off\n'
-                          f'set -g mode-keys {keys}\nset -g copy-mode-line-numbers {line_numbers}\n' + bindings)
+        config.write_text('set -g mouse on\nset -g status off\nset -g set-clipboard off\nset -sg escape-time 0\n'
+                          f'set -g mode-keys {keys}\nset -g copy-mode-line-numbers {line_numbers}\n'
+                          'bind -T copy-mode-vi WheelDownPane send -X -N 1 scroll-down\n'
+                          'bind -T copy-mode WheelDownPane send -X -N 1 scroll-down\n' + bindings)
         command = [TMUX, '-S', str(socket)]
         def tmux(*args):
             return subprocess.check_output(command + list(args), text=True, stderr=subprocess.PIPE, timeout=5).strip()
@@ -49,10 +51,11 @@ def exercise(keys, line_numbers, mouse_aware=False):
         tmux('-f', str(config), 'new-session', '-d', '-x', '60', '-y', '12', '-s', 'test', child_command)
         pid, master = pty.fork()
         if pid == 0:
+            fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 60, 600, 240))
             env = dict(os.environ, TERM='xterm-256color')
             env.pop('TMUX', None)
             os.execve(TMUX, command + ['attach-session', '-t', 'test'], env)
-        fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 60, 0, 0))
+        fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 60, 600, 240))
         def tick(seconds=.15):
             until = time.monotonic() + seconds
             while time.monotonic() < until:
@@ -82,6 +85,27 @@ def exercise(keys, line_numbers, mouse_aware=False):
             # Re-sourcing must preserve the original keyboard bindings, not wrap wrappers.
             tmux('source-file', str(config))
             assert tmux('display-message', '-p', '-t', 'test', '#{mouse_any_flag}') == str(int(mouse_aware))
+            if mouse_aware:
+                # Let terminal-query grace expire, or it masks escape-time=0.
+                tick(5.1)
+                tmux('bind-key', '-n', 'WheelDownPane', 'set-option', '-g', '@wheel_seen', 'yes')
+                def split_wheel():
+                    os.write(master, b'\x1b')
+                    time.sleep(.005)
+                    os.write(master, b'[<65;20;6M')
+                    tick()
+                # Negative control: reproduce literal mouse bytes with the old setting.
+                configured_delay = tmux('show-options', '-sv', 'escape-time')
+                tmux('set-option', '-sg', 'escape-time', '0')
+                split_wheel()
+                assert tmux('display-message', '-p', '-t', 'test', '#{@wheel_seen}') == ''
+                assert b'[<65;20;6M' in received.read_bytes(), received.read_bytes()
+                tmux('set-option', '-sg', 'escape-time', configured_delay)
+                received.write_bytes(b'')
+                split_wheel()
+                assert tmux('display-message', '-p', '-t', 'test', '#{@wheel_seen}') == 'yes', received.read_bytes()
+                assert received.read_bytes() == b'', received.read_bytes()
+                tmux('unbind-key', '-n', 'WheelDownPane')
             tmux('copy-mode', '-t', 'test')
             tmux('send-keys', '-t', 'test', '-X', 'history-top')
             tick()
@@ -142,7 +166,7 @@ def exercise(keys, line_numbers, mouse_aware=False):
             mouse(0, 12, 3, True)
             empty = snapshot()
             assert not empty['selection_present'] and not empty['selection_active'], empty
-            os.write(master, b'\x1b[<69;20;6M' * 10)
+            os.write(master, b'\x1b[<65;20;6M' * 10)
             tick(.3)
             scrolled = snapshot()
             mouse(4, 22, 7)

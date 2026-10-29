@@ -170,6 +170,24 @@ review because a screen's integer maximum is not an equivalent refresh-rate quer
 See `extra/performance-results.txt` for measurements and reproducible checks. The
 CPU benchmarks measure individual operations, not overall application speed.
 
+## Codex selection and scrollback in tmux
+
+Codex's alternate-screen transcript keeps its history inside the application.
+Entering tmux copy mode freezes the visible screen; it cannot scroll that internal
+history. For selection across transcript history, merge these values into the
+existing `[tui]` section of `~/.codex/config.toml` (not `alacritty.toml`):
+
+```toml
+[tui]
+alternate_screen = "never"
+raw_output_mode = true
+```
+
+These are Codex startup settings; an already running Codex client must be restarted
+or resumed to apply them. See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+The tmux selection configuration also keeps a 20 ms escape-sequence timeout so
+fragmented mouse reports do not leak into the application's text input.
+
 ## Validation
 
 ```sh
