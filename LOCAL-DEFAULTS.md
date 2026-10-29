@@ -174,17 +174,15 @@ CPU benchmarks measure individual operations, not overall application speed.
 
 Codex's alternate-screen transcript keeps its history inside the application.
 Entering tmux copy mode freezes the visible screen; it cannot scroll that internal
-history. For selection across transcript history, merge these values into the
-existing `[tui]` section of `~/.codex/config.toml` (not `alacritty.toml`):
+history. Selection across that internal history is not currently supported by
+these tmux bindings.
 
-```toml
-[tui]
-alternate_screen = "never"
-raw_output_mode = true
-```
-
-These are Codex startup settings; an already running Codex client must be restarted
-or resumed to apply them. See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Do not enable Codex's `tui.raw_output_mode` and `tui.alternate_screen = "never"`
+as a workaround here. In the tested local resume flow, the pane remained in the
+alternate screen with no tmux history and mouse reporting disabled, so normal
+wheel scrolling regressed. Those experimental overrides have been removed from
+the local Codex configuration. Restoring startup settings requires restarting
+the Codex client; it does not change an already running client's display mode.
 The tmux selection configuration also keeps a 20 ms escape-sequence timeout so
 fragmented mouse reports do not leak into the application's text input.
 
