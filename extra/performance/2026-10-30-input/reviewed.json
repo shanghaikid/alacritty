@@ -1,0 +1,23 @@
+{
+  "terminal": "alacritty",
+  "label": "reviewed",
+  "samples": 100,
+  "binary_sha256": "89d328785ff6810feb324c0dd4de7aeeef323373f1b3ee4841c26048c607c74d",
+  "peak_footprint_mib": 71.0806884765625,
+  "exit_code": 0,
+  "grid": [
+    140,
+    35
+  ],
+  "font": "Menlo 11",
+  "key_interval_ms": 50,
+  "endpoint": "GPU readback",
+  "median_ms": 3.4924999999999997,
+  "p95_ms": 11.68,
+  "max_ms": 19.652,
+  "cpu_percent_one_core": 6.094826018956763,
+  "footprint_mib": 66.09637451171875,
+  "child_complete": true,
+  "probe_loaded": true,
+  "valid": true
+}

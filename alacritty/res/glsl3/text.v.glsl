@@ -14,10 +14,12 @@ layout(location = 3) in vec4 textColor;
 
 // Background color.
 layout(location = 4) in vec4 backgroundColor;
+layout(location = 5) in float textureIndex;
 
 out vec2 TexCoords;
 flat out vec4 fg;
 flat out vec4 bg;
+flat out int atlas;
 
 // Terminal properties
 uniform vec2 cellDim;
@@ -41,6 +43,7 @@ void main() {
 
     fg = vec4(textColor.rgb / 255.0, textColor.a);
     bg = backgroundColor / 255.0;
+    atlas = int(textureIndex);
 
     float occupiedCells = 1;
     if ((int(fg.a) >= WIDE_CHAR)) {

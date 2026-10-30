@@ -1,0 +1,23 @@
+{
+  "before": {
+    "samples": 300,
+    "median_ms": 9.415,
+    "p95_ms": 14.505,
+    "cpu_percent_one_core": 16.411496650288253,
+    "footprint_mib": 106.4403076171875
+  },
+  "after": {
+    "samples": 300,
+    "median_ms": 4.167,
+    "p95_ms": 9.512,
+    "cpu_percent_one_core": 7.667673269964125,
+    "footprint_mib": 68.424560546875
+  },
+  "ghostty": {
+    "samples": 300,
+    "median_ms": 14.6465,
+    "p95_ms": 21.08,
+    "cpu_percent_one_core": 12.892946239409795,
+    "footprint_mib": 73.3001708984375
+  }
+}

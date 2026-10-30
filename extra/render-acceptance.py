@@ -2,6 +2,7 @@
 """Compare isolated macOS OpenGL frames without screen-recording permission.
 
 Usage: python3 extra/render-acceptance.py BEFORE_BINARY AFTER_BINARY OUTPUT_DIR
+Set ALACRITTY_RENDER_STRESS=1 to compare interleaved glyphs across many atlases.
 A temporary interposer reads only the framebuffer of each test child process.
 It is never loaded into an existing application or the installed app by default.
 """
@@ -76,6 +77,18 @@ def child(ready):
     # Exercise growth beyond the initial 1,024-instance GPU buffer while
     # keeping all the style/Unicode fixtures visible in the 24-line window.
     lines.extend(f"{row:02} " + "0123456789abcdefghijklmnopqrstuvwxyz" * 2 for row in range(10))
+    if os.environ.get("ALACRITTY_RENDER_STRESS") == "1":
+        # Prime multiple atlases over separate frames, then interleave glyphs
+        # from throughout the working set. Preserve the style/emoji fixtures.
+        for page in range(12):
+            rows = ["".join(chr(0x4e00 + page * 700 + row * 35 + col)
+                            for col in range(35)) for row in range(20)]
+            os.write(1, ("\x1b[?25l\x1b[2J\x1b[H" + "\r\n".join(rows)).encode())
+            time.sleep(.15)
+        lines = lines[:10] + [
+            "".join(chr(0x4e00 + ((row * 24 + col) * 137) % 8400) + "a"
+                    for col in range(24)) for row in range(13)
+        ]
     os.write(1, ("\x1b[?25l\x1b[2J\x1b[H" + "\r\n".join(lines)).encode())
     Path(ready).touch()
     time.sleep(60)

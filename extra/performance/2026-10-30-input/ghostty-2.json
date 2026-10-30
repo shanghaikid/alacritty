@@ -1,0 +1,20 @@
+{
+  "terminal": "ghostty",
+  "label": "ghostty-2",
+  "samples": 100,
+  "binary_sha256": "ea6fa0640fbb0534a72a1c9de7e98881d96cea00817fc19a526ada5f095d4549",
+  "peak_footprint_mib": 73.5811767578125,
+  "exit_code": 0,
+  "grid": [
+    140,
+    35
+  ],
+  "font": "Menlo 11",
+  "key_interval_ms": 50,
+  "endpoint": "IOSurface submission",
+  "median_ms": 15.049,
+  "p95_ms": 19.093,
+  "max_ms": 29.372,
+  "cpu_percent_one_core": 12.981759915463261,
+  "footprint_mib": 73.1749267578125
+}

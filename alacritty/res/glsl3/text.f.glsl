@@ -23,6 +23,7 @@ varying mediump vec4 bg;
 in vec2 TexCoords;
 flat in vec4 fg;
 flat in vec4 bg;
+flat in int atlas;
 
 layout(location = 0, index = 0) out vec4 color;
 layout(location = 0, index = 1) out vec4 alphaMask;
@@ -34,7 +35,21 @@ layout(location = 0, index = 1) out vec4 alphaMask;
 #define COLORED 1
 
 uniform int_t renderingPass;
+#if defined(GLES2_RENDERER)
 uniform sampler2D mask;
+#define sampleGlyph() texture(mask, TexCoords)
+#else
+uniform sampler2D mask[4];
+
+vec4 sampleGlyph() {
+    // GLSL 3.3 requires constant sampler-array indices. Explicit branches also
+    // allow adjacent instances to use different atlases within the same draw.
+    if (atlas == 0) return texture(mask[0], TexCoords);
+    if (atlas == 1) return texture(mask[1], TexCoords);
+    if (atlas == 2) return texture(mask[2], TexCoords);
+    return texture(mask[3], TexCoords);
+}
+#endif
 
 void main() {
     if (renderingPass == 0) {
@@ -55,7 +70,7 @@ void main() {
     // The wide char information is already stripped, so it's safe to check for equality here.
     if (int(colored) == COLORED) {
         // Color glyphs, like emojis.
-        FRAG_COLOR = texture(mask, TexCoords);
+        FRAG_COLOR = sampleGlyph();
         ALPHA_MASK = vec4(FRAG_COLOR.a);
 
         // Revert alpha premultiplication.
@@ -66,7 +81,7 @@ void main() {
         FRAG_COLOR = vec4(FRAG_COLOR.rgb, 1.0);
     } else {
         // Regular text glyphs.
-        vec3_t textColor = texture(mask, TexCoords).rgb;
+        vec3_t textColor = sampleGlyph().rgb;
         ALPHA_MASK = vec4(textColor, textColor.r);
         FRAG_COLOR = vec4(fg.rgb, 1.0);
     }

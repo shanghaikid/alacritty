@@ -1,0 +1,15 @@
+{
+  "scroll_frames": 240,
+  "scroll_fps": 59.94339236963322,
+  "scroll_interval_ms": {
+    "median": 16.62399999986519,
+    "p95": 21.075000000109867,
+    "max": 36.08299999996234
+  },
+  "local_key_samples": 100,
+  "local_key_to_gpu_ms": {
+    "median": 3.4705,
+    "p95": 5.601,
+    "max": 8.414
+  }
+}

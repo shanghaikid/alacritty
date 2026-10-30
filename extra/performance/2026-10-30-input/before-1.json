@@ -1,0 +1,20 @@
+{
+  "terminal": "alacritty",
+  "label": "before-1",
+  "samples": 100,
+  "binary_sha256": "aeb8713098fd048887ef184a80e63a49fa7375a86d08e7cd88290043d7ad67a7",
+  "peak_footprint_mib": 106.83087158203125,
+  "exit_code": 0,
+  "grid": [
+    140,
+    35
+  ],
+  "font": "Menlo 11",
+  "key_interval_ms": 50,
+  "endpoint": "GPU readback",
+  "median_ms": 9.628,
+  "p95_ms": 17.977,
+  "max_ms": 22.243,
+  "cpu_percent_one_core": 16.411496650288253,
+  "footprint_mib": 106.83087158203125
+}

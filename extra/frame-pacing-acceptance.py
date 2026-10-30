@@ -101,7 +101,16 @@ def child(phase):
             time.sleep(max(0, start + (i + 1) / 60 - time.monotonic()))
         phase.write_text("-")
         time.sleep(.25)
-        os.write(1, b"\x1b[2J\x1b[H")
+        # Keep a varied CJK/ASCII page visible during the input probe. An empty
+        # page cannot expose stalls when glyph-atlas changes split a frame into
+        # many batches that reuse the same GPU upload buffer.
+        dense_rows = [
+            "".join(chr(0x4e00 + (row * 24 + column) % 600) + "ab"
+                    for column in range(24))
+            for row in range(30)
+        ]
+        os.write(1, ("\x1b[2J\x1b[H" + "\r\n".join(dense_rows)).encode())
+        time.sleep(.25)
         phase.write_text("i")
         count = 0
         deadline = time.monotonic() + 15

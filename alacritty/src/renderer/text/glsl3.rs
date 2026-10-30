@@ -26,6 +26,8 @@ const TEXT_SHADER_V: &str = include_str!("../../../res/glsl3/text.v.glsl");
 /// Maximum items to be drawn in a batch.
 const BATCH_MAX: usize = 0x1_0000;
 const BATCH_INITIAL: usize = 1024;
+// Keep in sync with the mask array and sampling branches in text.f.glsl.
+const BATCH_TEXTURES: usize = 4;
 
 #[derive(Debug)]
 pub struct Glsl3Renderer {
@@ -127,6 +129,9 @@ impl Glsl3Renderer {
             // Background color.
             add_attr!(4, gl::UNSIGNED_BYTE, u8);
 
+            // Index into this batch's glyph textures.
+            add_attr!(1, gl::FLOAT, f32);
+
             // Cleanup.
             gl::BindVertexArray(0);
             gl::BindBuffer(gl::ARRAY_BUFFER, 0);
@@ -221,17 +226,30 @@ impl TextRenderApi<Batch> for RenderApi<'_> {
         self.batch
     }
 
+    fn add_render_item(&mut self, cell: &RenderableCell, glyph: &Glyph, size: &SizeInfo) {
+        if !self.batch.can_add_texture(glyph.tex_id) {
+            self.render_batch();
+        }
+        self.batch.add_item(cell, glyph, size);
+        if self.batch.full() {
+            self.render_batch();
+        }
+    }
+
     fn render_batch(&mut self) {
         unsafe {
             if self.batch.len() > self.batch.gpu_capacity {
                 self.batch.gpu_capacity = self.batch.len().next_power_of_two().min(BATCH_MAX);
-                gl::BufferData(
-                    gl::ARRAY_BUFFER,
-                    (self.batch.gpu_capacity * size_of::<InstanceData>()) as isize,
-                    ptr::null(),
-                    gl::STREAM_DRAW,
-                );
             }
+            // Orphan storage still used by the preceding draw before uploading this batch.
+            // Switching glyph atlases can produce many batches per frame; overwriting the
+            // same storage forces the driver to wait for each preceding draw to finish.
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (self.batch.gpu_capacity * size_of::<InstanceData>()) as isize,
+                ptr::null(),
+                gl::STREAM_DRAW,
+            );
             gl::BufferSubData(
                 gl::ARRAY_BUFFER,
                 0,
@@ -240,15 +258,18 @@ impl TextRenderApi<Batch> for RenderApi<'_> {
             );
         }
 
-        // Bind texture if necessary.
-        if *self.active_tex != self.batch.tex() {
-            unsafe {
-                gl::BindTexture(gl::TEXTURE_2D, self.batch.tex());
-            }
-            *self.active_tex = self.batch.tex();
-        }
-
         unsafe {
+            for unit in 0..BATCH_TEXTURES {
+                // Every sampler must have a complete texture, including unused slots.
+                let texture =
+                    self.batch.textures[if unit < self.batch.texture_count { unit } else { 0 }];
+                gl::ActiveTexture(gl::TEXTURE0 + unit as GLenum);
+                gl::BindTexture(gl::TEXTURE_2D, texture);
+            }
+            // Glyph uploads and the shared loader track the binding on unit zero.
+            gl::ActiveTexture(gl::TEXTURE0);
+            *self.active_tex = self.batch.textures[0];
+
             self.program.set_rendering_pass(RenderingPass::Background);
             gl::DrawElementsInstanced(
                 gl::TRIANGLES,
@@ -325,11 +346,14 @@ struct InstanceData {
     bg_g: u8,
     bg_b: u8,
     bg_a: u8,
+
+    texture: f32,
 }
 
 #[derive(Debug, Default)]
 pub struct Batch {
-    tex: GLuint,
+    textures: [GLuint; BATCH_TEXTURES],
+    texture_count: usize,
     instances: Vec<InstanceData>,
     gpu_capacity: usize,
 }
@@ -337,7 +361,7 @@ pub struct Batch {
 impl TextRenderBatch for Batch {
     #[inline]
     fn tex(&self) -> GLuint {
-        self.tex
+        self.textures[0]
     }
 
     #[inline]
@@ -351,9 +375,7 @@ impl TextRenderBatch for Batch {
     }
 
     fn add_item(&mut self, cell: &RenderableCell, glyph: &Glyph, _: &SizeInfo) {
-        if self.is_empty() {
-            self.tex = glyph.tex_id;
-        }
+        let texture = self.texture_slot(glyph.tex_id);
 
         let mut cell_flags = RenderingGlyphFlags::empty();
         cell_flags.set(RenderingGlyphFlags::COLORED, glyph.multicolor);
@@ -382,6 +404,7 @@ impl TextRenderBatch for Batch {
             bg_g: cell.bg.g,
             bg_b: cell.bg.b,
             bg_a: (cell.bg_alpha * 255.0) as u8,
+            texture: texture as f32,
         });
     }
 }
@@ -389,9 +412,30 @@ impl TextRenderBatch for Batch {
 impl Batch {
     #[inline]
     pub fn new() -> Self {
-        // Keep the existing maximum batch size/draw-call behavior, but only
-        // allocate GPU and CPU storage for the glyphs the window actually uses.
-        Self { tex: 0, instances: Vec::with_capacity(BATCH_INITIAL), gpu_capacity: BATCH_INITIAL }
+        // Keep the existing instance limit, but only allocate GPU and CPU
+        // storage for the glyphs the window actually uses.
+        Self {
+            textures: [0; BATCH_TEXTURES],
+            texture_count: 0,
+            instances: Vec::with_capacity(BATCH_INITIAL),
+            gpu_capacity: BATCH_INITIAL,
+        }
+    }
+
+    fn can_add_texture(&self, texture: GLuint) -> bool {
+        self.texture_count < BATCH_TEXTURES
+            || self.textures[..self.texture_count].contains(&texture)
+    }
+
+    fn texture_slot(&mut self, texture: GLuint) -> usize {
+        if let Some(slot) = self.textures[..self.texture_count].iter().position(|id| *id == texture)
+        {
+            return slot;
+        }
+        let slot = self.texture_count;
+        self.textures[slot] = texture;
+        self.texture_count += 1;
+        slot
     }
 
     #[inline]
@@ -410,7 +454,7 @@ impl Batch {
     }
 
     pub fn clear(&mut self) {
-        self.tex = 0;
+        self.texture_count = 0;
         self.instances.clear();
     }
 }
@@ -438,6 +482,12 @@ pub struct TextShaderProgram {
 impl TextShaderProgram {
     pub fn new(shader_version: ShaderVersion) -> Result<TextShaderProgram, Error> {
         let program = ShaderProgram::new(shader_version, None, TEXT_SHADER_V, TEXT_SHADER_F)?;
+        let mask = program.get_uniform_location(c"mask[0]")?;
+        unsafe {
+            gl::UseProgram(program.id());
+            gl::Uniform1iv(mask, BATCH_TEXTURES as GLsizei, [0, 1, 2, 3].as_ptr());
+            gl::UseProgram(0);
+        }
         Ok(Self {
             u_projection: program.get_uniform_location(c"projection")?,
             u_cell_dim: program.get_uniform_location(c"cellDim")?,
@@ -471,5 +521,29 @@ impl TextShader for TextShaderProgram {
 
     fn projection_uniform(&self) -> GLint {
         self.u_projection
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interleaved_atlases_reuse_slots_until_the_batch_is_full() {
+        let mut batch = Batch::new();
+        for _ in 0..100 {
+            for (slot, texture) in [11, 22, 33, 44].into_iter().enumerate() {
+                assert!(batch.can_add_texture(texture));
+                assert_eq!(batch.texture_slot(texture), slot);
+            }
+        }
+        assert!(!batch.can_add_texture(55));
+        assert_eq!(batch.texture_count, BATCH_TEXTURES);
+
+        batch.clear();
+        assert!(batch.can_add_texture(55));
+        assert_eq!(batch.texture_slot(55), 0);
+        assert_eq!(batch.texture_slot(11), 1);
+        assert_eq!(batch.texture_count, 2);
     }
 }
