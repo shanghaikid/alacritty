@@ -201,7 +201,7 @@ mod tests {
     use crate::event::VoidListener;
     use crate::grid::GridCell;
     use crate::grid::{Dimensions, Scroll};
-    use crate::index::{Column, Line};
+    use crate::index::{Column, Line, Point};
     use crate::term::cell::{Cell, Flags, Hyperlink};
     use crate::term::test::TermSize;
     use crate::term::{Config, Term};
@@ -368,6 +368,35 @@ mod tests {
         for row in &snapshot {
             assert_eq!(&**row, &original);
         }
+    }
+
+    #[test]
+    fn bounded_line_search_keeps_distant_history_cold() {
+        let mut term = Term::new(Config::default(), &TermSize::new(8, 4), VoidListener);
+        let mut parser: Processor = Processor::new();
+        parser.advance(&mut term, "a".repeat(4096 * 8).as_bytes());
+        let mut cursor = 0;
+        while term.grid_mut().compact_history(&mut cursor) {}
+
+        let origin = Point::new(Line(-2000), Column(3));
+        let left = term.line_search_left_bounded(origin, Line(-2100));
+        let right = term.line_search_right_bounded(origin, Line(-1900));
+        assert_eq!(left, Point::new(Line(-2100), Column(0)));
+        assert_eq!(right, Point::new(Line(-1900), Column(7)));
+        // A full line search followed by clamping would decode these blocks.
+        for line in [Line(-3000), Line(-1000)] {
+            assert!(term.grid().raw[line].is_cold_compact(), "decoded distant row {line:?}");
+        }
+
+        // Out-of-grid limits still stop at the actual grid boundaries.
+        assert_eq!(
+            term.line_search_left_bounded(origin, Line(i32::MIN)),
+            Point::new(term.topmost_line(), Column(0)),
+        );
+        assert_eq!(
+            term.line_search_right_bounded(origin, Line(i32::MAX)),
+            Point::new(term.bottommost_line(), Column(7)),
+        );
     }
 
     #[test]

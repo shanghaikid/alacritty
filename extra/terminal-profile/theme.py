@@ -59,7 +59,7 @@ def install(writer, source, directory, tmux):
 
 def install_locked(writer, source, directory, tmux):
     name = selected(directory)
-    for file in ('theme.py', 'merino-light.toml', 'merino-dark.toml',
+    for file in ('theme.py', 'tmux-scroll.conf', 'merino-light.toml', 'merino-dark.toml',
                  'merino-light-tmux.conf', 'merino-dark-tmux.conf'):
         writer.write(directory / file, (source / file).read_bytes())
     writer.write(directory / 'active-theme.toml', palette(directory, name))
@@ -70,6 +70,9 @@ def install_locked(writer, source, directory, tmux):
     register = shlex.join([python, str(directory / 'theme.py'), 'register', '--tmux', str(tmux),
                           '--socket']) + ' #{q:socket_path}'
     bootstrap = 'set -s @merino_theme_directory ' + shlex.quote(str(directory)) + '\n'
+    # Both full installs and dotfiles upgrades load this bootstrap. Keep the
+    # scroll fix here so it survives restarts without editing shared dotfiles.
+    bootstrap += 'source-file ' + shlex.quote(str(directory / 'tmux-scroll.conf')) + '\n'
     bootstrap += 'source-file ' + shlex.quote(str(directory / 'active-tmux.conf')) + '\n'
     bootstrap += 'run-shell -b ' + shlex.quote(register) + '\n'
     writer.write(directory / 'theme.conf', bootstrap)

@@ -29,6 +29,8 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Changed
 
+- Omit tmux scrollback timestamps in the Merino profile to avoid timezone I/O
+  during scrolling; retain position and search counts in fresh and upgraded installs
 - Use Merino Light colors, 12-point text, and a blinking block cursor by default
 - Use Menlo and light window decorations by default on macOS
 - Don't highlight hints on hover when the mouse cursor is hidden
@@ -38,6 +40,7 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Fixed
 
+- Scrolling long wrapped text scanning and expanding history outside the hint search range
 - macOS IPC connections closing before a delayed request arrives
 - Theme upgrades briefly removing live configuration, and tmux startup racing
   with a Merino palette switch

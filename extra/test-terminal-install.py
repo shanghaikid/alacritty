@@ -48,6 +48,13 @@ class Installation(unittest.TestCase):
     def install(self):
         return installer.install_profile(self.app, self.home, self.config, self.home, self.home / '.codex')
 
+    def assert_scroll_indicator(self, tmux):
+        value = tmux('show-options', '-gwv', 'copy-mode-position-format')
+        self.assertNotIn('top_line_time', value)
+        for field in ('copy_position', 'copy_position_limit', 'search_count',
+                      'search_count_partial', 'search_timed_out'):
+            self.assertIn(field, value)
+
     def test_fresh_and_repeat(self):
         self.install()
         before = {p: p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
@@ -205,6 +212,58 @@ theme.install(install.Writer(Path(sys.argv[2])), Path(sys.argv[3]), Path(sys.arg
         self.assertEqual((self.config / 'tmux.conf').read_text().count('theme.conf'), 1)
 
     @unittest.skipUnless(TMUX.exists(), 'TEST_TMUX must point to the OSC 7501 tmux build')
+    def test_dotfiles_scroll_fix_reloads_and_survives_restart(self):
+        spec = importlib.util.spec_from_file_location('theme_upgrade', EXTRA / 'install-merino-toggle.py')
+        upgrade = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(upgrade)
+        self.config.mkdir(parents=True)
+        (self.config / 'alacritty.toml').write_text('[font]\nsize = 15\n')
+        dotfile = self.home / 'shared-tmux.conf'
+        original = ('set -g history-limit 1234\nsource-file -q '
+                    + shlex.quote(str(self.config / 'theme.conf')) + '\n')
+        dotfile.write_text(original)
+        (self.home / '.tmux.conf').symlink_to(dotfile)
+        directory = upgrade.install(self.home, TMUX)
+        installer.theme.switch(directory, 'dark')
+        # Simulate a previous installation which has themes but no scroll fix.
+        bootstrap = directory / 'theme.conf'
+        bootstrap.write_text(''.join(line for line in bootstrap.read_text().splitlines(True)
+                                     if 'tmux-scroll.conf' not in line))
+        (directory / 'tmux-scroll.conf').unlink()
+        command = [str(TMUX), '-S', str(self.root / 'upgrade-socket')]
+        env = dict(os.environ, HOME=str(self.home))
+        env.pop('TMUX', None)
+
+        def tmux(*args):
+            return subprocess.check_output(command + list(args), env=env, text=True,
+                                           stderr=subprocess.PIPE, timeout=10).strip()
+
+        def start():
+            tmux('-f', str(self.home / '.tmux.conf'), 'new-session', '-d', '-s', 'upgrade',
+                 '/bin/sleep 60')
+
+        try:
+            start()
+            self.assertIn('top_line_time', tmux('show-options', '-gwv', 'copy-mode-position-format'))
+            server = tmux('display-message', '-p', '#{pid}')
+            bindings = tmux('list-keys')
+            for _ in range(2):
+                upgrade.install(self.home, TMUX)
+                tmux('source-file', str(self.config / 'tmux.conf'))
+                self.assert_scroll_indicator(tmux)
+                self.assertEqual(tmux('display-message', '-p', '#{pid}'), server)
+                self.assertEqual(tmux('list-keys'), bindings)
+                self.assertEqual(tmux('show-options', '-gv', 'history-limit'), '1234')
+                self.assertIn('#0d1117', tmux('show-options', '-gwv', 'window-style'))
+            tmux('kill-server')
+            start()
+            self.assert_scroll_indicator(tmux)
+            self.assertTrue((self.home / '.tmux.conf').is_symlink())
+            self.assertEqual(dotfile.read_text(), original)
+        finally:
+            subprocess.run(command + ['kill-server'], env=env, capture_output=True)
+
+    @unittest.skipUnless(TMUX.exists(), 'TEST_TMUX must point to the OSC 7501 tmux build')
     def test_theme_switch_updates_tmux_and_survives_install(self):
         self.install()
         socket = self.root / 'theme-socket'
@@ -306,6 +365,7 @@ theme.install(install.Writer(Path(sys.argv[2])), Path(sys.argv[3]), Path(sys.arg
             self.assertEqual(tmux('show-options', '-gv', 'status-position'), 'top')
             self.assertIn('#eceef2', tmux('show-options', '-gv', 'status-style'))
             self.assertIn('#ffffff', tmux('show-options', '-gwv', 'window-style'))
+            self.assert_scroll_indicator(tmux)
             self.assertEqual(tmux('show-environment', '-g', 'ALACRITTY_TERMINAL_PROFILE'),
                              'ALACRITTY_TERMINAL_PROFILE=merino')
             bindings = tmux('list-keys', '-T', 'copy-mode-vi')
@@ -323,6 +383,7 @@ theme.install(install.Writer(Path(sys.argv[2])), Path(sys.argv[3]), Path(sys.arg
             self.assertIn('PROFILE=merino', tmux('capture-pane', '-p'))
             tmux('source-file', str(self.profile / 'tmux.conf'))
             self.assertEqual(tmux('list-keys', '-T', 'copy-mode-vi'), bindings)
+            self.assert_scroll_indicator(tmux)
         finally:
             subprocess.run(command + ['kill-server'], env=env, capture_output=True)
 

@@ -702,8 +702,14 @@ impl<T> Term<T> {
     }
 
     /// Find the beginning of the current line across linewraps.
-    pub fn line_search_left(&self, mut point: Point) -> Point {
-        while point.line > self.topmost_line()
+    pub fn line_search_left(&self, point: Point) -> Point {
+        self.line_search_left_bounded(point, self.topmost_line())
+    }
+
+    /// Find the beginning of a logical line without reading rows before `limit`.
+    pub fn line_search_left_bounded(&self, mut point: Point, limit: Line) -> Point {
+        let limit = limit.max(self.topmost_line());
+        while point.line > limit
             && self.grid[point.line - 1i32][self.last_column()].flags.contains(Flags::WRAPLINE)
         {
             point.line -= 1;
@@ -715,8 +721,14 @@ impl<T> Term<T> {
     }
 
     /// Find the end of the current line across linewraps.
-    pub fn line_search_right(&self, mut point: Point) -> Point {
-        while point.line + 1 < self.screen_lines()
+    pub fn line_search_right(&self, point: Point) -> Point {
+        self.line_search_right_bounded(point, self.bottommost_line())
+    }
+
+    /// Find the end of a logical line without reading rows after `limit`.
+    pub fn line_search_right_bounded(&self, mut point: Point, limit: Line) -> Point {
+        let limit = limit.min(self.bottommost_line());
+        while point.line < limit
             && self.grid[point.line][self.last_column()].flags.contains(Flags::WRAPLINE)
         {
             point.line += 1;

@@ -315,6 +315,22 @@ impl HintLabels {
     }
 }
 
+/// Bound the linewrap walk itself, so long logical lines do not expand cold
+/// scrollback outside the search range on every pointer/scroll event.
+fn visible_regex_bounds<T>(term: &Term<T>) -> (Point, Point) {
+    let viewport_start = Line(-(term.grid().display_offset() as i32));
+    let viewport_end = viewport_start + term.bottommost_line();
+    let start = term.line_search_left_bounded(
+        Point::new(viewport_start, Column(0)),
+        viewport_start - MAX_SEARCH_LINES,
+    );
+    let end = term.line_search_right_bounded(
+        Point::new(viewport_end, Column(0)),
+        viewport_end + MAX_SEARCH_LINES,
+    );
+    (start, end)
+}
+
 /// Iterate over all visible regex matches.
 pub fn visible_regex_match_iter<'a, T>(
     term: &'a Term<T>,
@@ -322,10 +338,7 @@ pub fn visible_regex_match_iter<'a, T>(
 ) -> impl Iterator<Item = Match> + 'a {
     let viewport_start = Line(-(term.grid().display_offset() as i32));
     let viewport_end = viewport_start + term.bottommost_line();
-    let mut start = term.line_search_left(Point::new(viewport_start, Column(0)));
-    let mut end = term.line_search_right(Point::new(viewport_end, Column(0)));
-    start.line = start.line.max(viewport_start - MAX_SEARCH_LINES);
-    end.line = end.line.min(viewport_end + MAX_SEARCH_LINES);
+    let (start, end) = visible_regex_bounds(term);
 
     regex
         .cached_matches(term, start, end, viewport_end)
@@ -341,10 +354,7 @@ fn scan_visible_regex_match_iter<'a, T>(
 ) -> impl Iterator<Item = Match> + 'a {
     let viewport_start = Line(-(term.grid().display_offset() as i32));
     let viewport_end = viewport_start + term.bottommost_line();
-    let mut start = term.line_search_left(Point::new(viewport_start, Column(0)));
-    let mut end = term.line_search_right(Point::new(viewport_end, Column(0)));
-    start.line = start.line.max(viewport_start - MAX_SEARCH_LINES);
-    end.line = end.line.min(viewport_end + MAX_SEARCH_LINES);
+    let (start, end) = visible_regex_bounds(term);
 
     RegexIter::new(start, end, Direction::Right, term, regex)
         .skip_while(move |rm| rm.end().line < viewport_start)
@@ -811,6 +821,68 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn visible_regex_bounds_preserve_clamped_logical_lines() {
+        for text in ["a", "中a文", "https://example.com/中文 ", "short\r\n", "wrapped 中文\r\n"]
+        {
+            let mut term = Term::new(Config::default(), &TermSize::new(9, 12), VoidListener);
+            let mut parser: Processor = Processor::new();
+            parser.advance(&mut term, text.repeat(600).as_bytes());
+            for offset in [0, 1, 100, 300, i32::MAX] {
+                term.scroll_display(Scroll::Bottom);
+                term.scroll_display(Scroll::Delta(offset));
+                let first = Line(-(term.grid().display_offset() as i32));
+                let last = first + term.bottommost_line();
+                // Reference the original search range, including its columns
+                // when a long logical line is truncated by either limit.
+                let mut start = term.line_search_left(Point::new(first, Column(0)));
+                let mut end = term.line_search_right(Point::new(last, Column(0)));
+                start.line = start.line.max(first - MAX_SEARCH_LINES);
+                end.line = end.line.min(last + MAX_SEARCH_LINES);
+                assert_eq!(visible_regex_bounds(&term), (start, end), "{text:?}/{offset}");
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "manual release-mode macOS scrollback hint benchmark"]
+    fn benchmark_scrollback_hints() {
+        use std::{hint::black_box, time::Instant};
+
+        for history in [1_000, 100_000] {
+            let config = Config { scrolling_history: history, ..Config::default() };
+            let mut term = Term::new(config, &TermSize::new(120, 40), VoidListener);
+            let mut parser: Processor = Processor::new();
+            // One logical line, as produced by minified JSON or a large pasted value.
+            parser.advance(&mut term, "a".repeat((history + 40) * 120).as_bytes());
+            let mut cursor = 0;
+            while term.grid_mut().compact_history(&mut cursor) {}
+            term.scroll_display(Scroll::Delta(history as i32 / 2));
+            let config = UiConfig::default();
+            // Compile the hint regexes before timing the cold history access.
+            for hint in &config.hints.enabled {
+                if let Some(regex) = &hint.content.regex {
+                    regex.with_compiled(|_| ());
+                }
+            }
+            let mut samples = Vec::new();
+            for _ in 0..101 {
+                term.scroll_display(Scroll::Delta(1));
+                let point = Point::new(Line(20 - term.grid().display_offset() as i32), Column(60));
+                let start = Instant::now();
+                black_box(highlighted_at(&term, &config, point, ModifiersState::empty()));
+                samples.push(start.elapsed().as_secs_f64() * 1000.);
+            }
+            let cold = samples.remove(0);
+            samples.sort_by(f64::total_cmp);
+            println!(
+                "scrollback hints: history={history} cold={cold:.3}ms p50={:.3}ms p95={:.3}ms",
+                samples[50], samples[95],
+            );
         }
     }
 

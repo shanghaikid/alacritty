@@ -42,6 +42,9 @@ builds only the terminal emulator.
 - Cmd+T / Cmd+W tabs, Cmd+D / Cmd+Shift+D splits, Cmd+H/J/K/L pane navigation,
   Cmd+1–9 tab selection, and the existing mouse and Shift-selection behavior.
   Cmd+Shift+N opens a shell window outside tmux; Ctrl+B remains the tmux prefix.
+- Scrollback position and search counts without per-line timestamp formatting.
+  This avoids repeated macOS timezone-file reads while scrolling in tmux. Mouse
+  and trackpad scroll distances are unchanged.
 - A zsh prompt with a blue path, amber Git branch, green/red command indicator,
   and subdued time. A guarded block is appended to the user's `.zshrc`; the
   profile applies only when `ALACRITTY_TERMINAL_PROFILE=merino`, set by Alacritty.
@@ -78,6 +81,21 @@ The updated dotfiles `.tmux.conf` conditionally loads
 theme. Its installer also preserves the managed Alacritty config. For an already
 running server, source `~/.config/alacritty/tmux.conf` once; this registers the
 server for native button updates. The new-machine installer does this at startup.
+
+The same upgrade also installs `tmux-scroll.conf` through the managed theme
+bootstrap, so the scroll fix does not depend on copying this machine's dotfiles.
+After upgrading an existing server, apply it without closing any panes:
+
+```sh
+tmux source-file ~/.config/alacritty/tmux.conf
+tmux show-options -gw copy-mode-position-format
+```
+
+The displayed format should retain `copy_position` and `search_count` but omit
+`top_line_time`. Dotfiles setups must keep the optional `theme.conf` include
+described above for the fix to load when their server restarts. Older tmux
+versions without this position-format option skip it without an error. Merely
+replacing the `.app` does not update a separately installed tmux configuration.
 
 The current dotfiles prompt uses ANSI `blue`, `yellow`, `green`, `red`, and color
 8, so both existing and new zsh prompts follow the selected palette automatically.
@@ -143,7 +161,8 @@ TEST_TMUX="$PWD/dist/Alacritty.app/Contents/MacOS/tmux" \
 
 Tests use a temporary home and a separate tmux socket. They check TOML parsing,
 repeat installation, existing symlinks and hooks, zsh prompt isolation, actual
-tmux colors, selection bindings, and OSC status reporting. To stage the complete
+tmux colors, selection bindings, OSC status reporting, and scroll settings across
+fresh installation, live upgrade, and server restart. To stage the complete
 installer without changing your real configuration or macOS preferences:
 
 ```sh

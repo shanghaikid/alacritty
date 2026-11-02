@@ -32,7 +32,8 @@ def install(home, tmux):
     import tempfile
     with tempfile.TemporaryDirectory(prefix='merino-theme-assets-') as temporary:
         source = Path(temporary)
-        shutil.copy2(EXTRA / 'terminal-profile/theme.py', source / 'theme.py')
+        for file in ('theme.py', 'tmux-scroll.conf'):
+            shutil.copy2(EXTRA / 'terminal-profile' / file, source / file)
         for name in ('light', 'dark'):
             for suffix in ('.toml', '-tmux.conf'):
                 file = f'merino-{name}{suffix}'
