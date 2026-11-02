@@ -38,6 +38,9 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Fixed
 
+- macOS IPC connections closing before a delayed request arrives
+- Theme upgrades briefly removing live configuration, and tmux startup racing
+  with a Merino palette switch
 - Brief error popup when saving the config file with some editors
 - Subprocesses on OpenBSD now run with their CWD set to that of the shell's foreground process.
 - Crash when OpenGL context resets

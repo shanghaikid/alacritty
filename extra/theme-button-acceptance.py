@@ -8,6 +8,7 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import socket as sockets
 import subprocess
 import sys
 import tempfile
@@ -149,6 +150,23 @@ enabled = false
                 assert initial['x'] > initial['windowWidth'] - 100, initial
                 assert initial['buttonWidth'] == 30, initial
                 assert initial['tooltip'] == initial['label'] == 'Switch to Merino Dark', initial
+                # macOS accept() inherits nonblocking mode. Delay and split a
+                # real request to ensure the listener waits instead of closing it.
+                with sockets.socket(sockets.AF_UNIX) as client:
+                    client.settimeout(3)
+                    client.connect(str(socket))
+                    time.sleep(.05)
+                    payload = json.dumps({'GetConfig': {'window_id': -1}}).encode()
+                    middle = len(payload) // 2
+                    client.sendall(payload[:middle])
+                    time.sleep(.03)
+                    client.sendall(payload[middle:])
+                    client.shutdown(sockets.SHUT_WR)
+                    reply = b''
+                    while chunk := client.recv(65536):
+                        reply += chunk
+                    runtime = json.loads(json.loads(reply)['GetConfig'])
+                    assert runtime['colors']['primary']['background'] == '#ffffff'
                 deadline = time.monotonic() + 5
                 while not (profile / 'servers.json').exists():
                     assert time.monotonic() < deadline
@@ -187,7 +205,7 @@ enabled = false
                 process = subprocess.Popen([binary, '--config-file', str(config), '--socket', str(socket),
                                             '-e', '/bin/sleep', '300'], env=env, stdout=log, stderr=log)
                 reopened = wait_for(lambda s: s['buttons'] == 1 and s['tooltip'] == 'Switch to Merino Light')
-                print(json.dumps({'native_clicks': 'passed', 'tmux_sync': 'passed',
+                print(json.dumps({'delayed_ipc_request': 'passed', 'native_clicks': 'passed', 'tmux_sync': 'passed',
                                   'stable_geometry': 'passed', 'resize_and_reload': 'passed',
                                   'restart_persistence': 'passed', 'button': reopened}))
         except Exception:

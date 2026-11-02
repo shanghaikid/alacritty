@@ -54,8 +54,9 @@ def build(output, test=False):
             '--target-dir', target, '-p', 'alacritty', '-p', 'alacritty_status', env=env)
         release = target / TARGET / 'release'
         if test:
-            run('cargo', 'test', '--locked', '--release', '--target', TARGET,
-                '--target-dir', target, '-p', 'alacritty', '--bin', 'alacritty', 'config::', env=env)
+            for test_filter in ('config::', 'polling::ipc::tests'):
+                run('cargo', 'test', '--locked', '--release', '--target', TARGET,
+                    '--target-dir', target, '-p', 'alacritty', '--bin', 'alacritty', test_filter, env=env)
         tmux_env = dict(env,
                         CPPFLAGS=f'-I{brew}/opt/libevent/include -I{brew}/opt/ncurses/include -I{brew}/opt/utf8proc/include',
                         LDFLAGS=f'-L{brew}/opt/libevent/lib -L{brew}/opt/ncurses/lib -L{brew}/opt/utf8proc/lib',
@@ -117,6 +118,6 @@ def build(output, test=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/Alacritty.app')
-    parser.add_argument('--test', action='store_true', help='Run config regression tests before cleanup')
+    parser.add_argument('--test', action='store_true', help='Run config and IPC regression tests before cleanup')
     args = parser.parse_args()
     build(args.output.resolve(), args.test)

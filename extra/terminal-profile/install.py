@@ -32,12 +32,18 @@ class Writer:
             path.chmod(mode)
             return
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_dir() and not path.is_symlink():
+            raise IsADirectoryError(path)
         if path.exists() or path.is_symlink():
             # Preserve symlinks themselves, without modifying external dotfiles.
             self.backup.mkdir(parents=True, exist_ok=True, mode=0o700)
             destination = self.backup / str(path).lstrip('/')
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(path), str(destination))
+            # Keep the live path readable until os.replace publishes the new
+            # file. A rename into the backup briefly exposed a missing config
+            # to Alacritty's watcher. Preserve the first version if rewritten.
+            if not destination.exists() and not destination.is_symlink():
+                shutil.copy2(path, destination, follow_symlinks=False)
         fd, temporary = tempfile.mkstemp(prefix='.alacritty-', dir=path.parent)
         try:
             with os.fdopen(fd, 'wb') as stream:
@@ -92,7 +98,7 @@ def install_profile(app, home, config, zsh_dir, codex_dir):
     toggle = theme.install(writer, source, profile, tmux)
     writer.write(config / 'theme.conf', 'source-file ' + shlex.quote(str(profile / 'theme.conf')) + '\n')
     for name in ('prompt.zsh', 'mouse-reset.zsh', 'window-name', 'start.zsh',
-                 'merino-light.toml', 'rex-appearance.toml', 'merino-light-tmux.conf',
+                 'rex-appearance.toml',
                  'tmux-mouse-anchor-input.py'):
         writer.write(profile / name, (source / name).read_bytes(),
                      0o755 if name in ('window-name', 'start.zsh') else 0o644)

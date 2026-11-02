@@ -7,6 +7,7 @@ use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{env, fs};
 
 use log::{error, warn};
@@ -52,9 +53,7 @@ impl IpcListener {
         let (stream, _) = self.socket.accept()?;
 
         self.data.clear();
-        let mut reader = BufReader::new(&stream);
-
-        match reader.read_line(&mut self.data) {
+        match read_request(&stream, &mut self.data) {
             Ok(0) | Err(_) => return Ok(()),
             Ok(_) => (),
         };
@@ -99,6 +98,16 @@ impl IpcListener {
     }
 }
 
+/// Accepted sockets inherit O_NONBLOCK on macOS. The accept readiness event
+/// does not guarantee the client has written its request yet.
+fn read_request(stream: &UnixStream, data: &mut String) -> IoResult<usize> {
+    stream.set_nonblocking(false)?;
+    // Bound idle clients on the IPC worker and blocked replies on the UI thread.
+    stream.set_read_timeout(Some(Duration::from_secs(1)))?;
+    stream.set_write_timeout(Some(Duration::from_millis(100)))?;
+    BufReader::new(stream).read_line(data)
+}
+
 /// Send a message to the active Alacritty socket.
 pub fn send_message(socket: Option<PathBuf>, message: SocketMessage) -> IoResult<()> {
     let mut socket = find_socket(socket)?;
@@ -122,8 +131,13 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
     // Read reply, returning early if there is none.
     let mut buffer = String::new();
     let mut reader = BufReader::new(stream);
-    if let Ok(0) | Err(_) = reader.read_line(&mut buffer) {
-        return Ok(());
+    if reader.read_line(&mut buffer)? == 0 {
+        return match message {
+            SocketMessage::GetConfig(_) | SocketMessage::ProgramStatus(_) => {
+                Err(IoError::new(ErrorKind::UnexpectedEof, "IPC connection closed without a reply"))
+            },
+            _ => Ok(()),
+        };
     }
 
     // Parse IPC reply.
@@ -245,4 +259,41 @@ pub fn socket_prefix() -> String {
 pub enum SocketReply {
     GetConfig(String),
     ProgramStatus(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::IpcGetConfig;
+
+    #[test]
+    fn accepted_nonblocking_stream_waits_for_delayed_request() {
+        let (server, mut client) = UnixStream::pair().unwrap();
+        // Model Darwin's inherited flag, including when this test runs on Linux.
+        server.set_nonblocking(true).unwrap();
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(30));
+            client.write_all(b"{\"GetConfig\":{\"window_id\":-1}}").unwrap();
+            client.shutdown(Shutdown::Write).unwrap();
+        });
+        let mut data = String::new();
+        assert!(read_request(&server, &mut data).unwrap() > 0);
+        assert!(matches!(serde_json::from_str(&data).unwrap(), SocketMessage::GetConfig(_)));
+        sender.join().unwrap();
+    }
+
+    #[test]
+    fn idle_request_has_a_bounded_wait() {
+        let (server, _client) = UnixStream::pair().unwrap();
+        let error = read_request(&server, &mut String::new()).unwrap_err();
+        assert!(matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut));
+    }
+
+    #[test]
+    fn missing_query_reply_is_an_error() {
+        let (server, client) = UnixStream::pair().unwrap();
+        drop(server);
+        let query = SocketMessage::GetConfig(IpcGetConfig { window_id: Some(-1) });
+        assert_eq!(handle_reply(&client, &query).unwrap_err().kind(), ErrorKind::UnexpectedEof);
+    }
 }

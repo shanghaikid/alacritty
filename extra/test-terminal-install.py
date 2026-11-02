@@ -16,6 +16,7 @@ import tempfile
 import time
 import tomllib
 import unittest
+from unittest import mock
 
 EXTRA = Path(__file__).resolve().parent
 sys.path.insert(0, str(EXTRA / 'terminal-profile'))
@@ -94,6 +95,92 @@ class Installation(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.install()
         self.assertFalse(self.config.exists())
+
+    def test_writer_replaces_live_config_without_removing_it_first(self):
+        path = self.home / 'live.toml'
+        path.write_text('old configuration')
+        replace = os.replace
+
+        def observe_replace(source, destination):
+            self.assertEqual(path.read_text(), 'old configuration')
+            return replace(source, destination)
+
+        with mock.patch.object(installer.os, 'replace', side_effect=observe_replace):
+            writer = installer.Writer(self.home)
+            writer.write(path, 'new configuration')
+        self.assertEqual(path.read_text(), 'new configuration')
+        self.assertEqual((writer.backup / str(path).lstrip('/')).read_text(), 'old configuration')
+
+    def test_failed_replace_keeps_live_config_and_original_backup(self):
+        path = self.home / 'live.toml'
+        path.write_text('original')
+        writer = installer.Writer(self.home)
+        with mock.patch.object(installer.os, 'replace', side_effect=OSError('disk error')):
+            with self.assertRaises(OSError):
+                writer.write(path, 'replacement')
+        self.assertEqual(path.read_text(), 'original')
+        writer.write(path, 'second')
+        writer.write(path, 'third')
+        self.assertEqual((writer.backup / str(path).lstrip('/')).read_text(), 'original')
+
+    def test_theme_upgrade_waits_for_concurrent_switch(self):
+        self.install()
+        ready = self.root / 'installer-ready'
+        code = '''import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import theme, install
+Path(sys.argv[6]).touch()
+theme.install(install.Writer(Path(sys.argv[2])), Path(sys.argv[3]), Path(sys.argv[4]), Path(sys.argv[5]))
+'''
+        process = None
+        try:
+            with installer.theme.locked(self.profile):
+                process = subprocess.Popen([sys.executable, '-c', code,
+                    str(EXTRA / 'terminal-profile'), str(self.home),
+                    str(self.app / 'Contents/Resources/terminal-profile'), str(self.profile),
+                    str(TMUX), str(ready)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                deadline = time.monotonic() + 5
+                while not ready.exists():
+                    self.assertLess(time.monotonic(), deadline)
+                    self.assertIsNone(process.poll())
+                    time.sleep(.01)
+                # A ready installer must remain blocked until the active switch commits.
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    process.wait(timeout=.2)
+                installer.theme.switch(self.profile, 'dark')
+            stdout, stderr = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, stderr.decode())
+            self.assertEqual(installer.theme.selected(self.profile), 'dark')
+            self.assertIn('#0d1117', (self.profile / 'active-tmux.conf').read_text())
+        finally:
+            if process and process.poll() is None:
+                process.kill()
+                process.communicate()
+
+    @unittest.skipUnless(TMUX.exists(), 'TEST_TMUX must point to the OSC 7501 tmux build')
+    def test_late_server_registration_catches_up_to_selected_theme(self):
+        self.install()
+        socket = self.root / 'late-server'
+        command = [str(TMUX), '-S', str(socket)]
+        config = self.root / 'late.conf'
+        config.write_text('set -s @merino_theme_directory ' + shlex.quote(str(self.profile.resolve())) + '\n'
+                          'source-file ' + shlex.quote(str(self.profile / 'merino-light-tmux.conf')) + '\n')
+        helper = [sys.executable, str(self.profile / 'theme.py')]
+        try:
+            subprocess.run(command + ['-f', str(config), 'new-session', '-d', '-s', 'late',
+                                      '/bin/sleep 60'], check=True)
+            # Model startup loading light just before a toggle, then registering late.
+            subprocess.run(helper + ['dark'], check=True, capture_output=True)
+            subprocess.run(helper + ['register', '--tmux', str(TMUX), '--socket', str(socket)], check=True)
+            style = subprocess.check_output(command + ['show-options', '-gwv', 'window-style'], text=True)
+            self.assertIn('#0d1117', style)
+            subprocess.run(command + ['set-option', '-s', '@merino_theme_directory', '/unrelated'], check=True)
+            result = subprocess.run(helper + ['register', '--tmux', str(TMUX), '--socket', str(socket)],
+                                    capture_output=True)
+            self.assertNotEqual(result.returncode, 0, 'Must reject an unrelated server')
+        finally:
+            subprocess.run(command + ['kill-server'], capture_output=True)
 
     def test_incremental_install_keeps_dotfiles_links(self):
         spec = importlib.util.spec_from_file_location('theme_upgrade', EXTRA / 'install-merino-toggle.py')
