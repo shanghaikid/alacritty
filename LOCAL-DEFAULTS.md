@@ -1,5 +1,10 @@
 # Built-in defaults
 
+For the complete setup on another Apple Silicon Mac (tmux, zsh prompt, mouse
+selection and status badges included), use
+[`make install-terminal`](TERMINAL-SETUP.md). Building only the app, as described
+below, provides the embedded emulator defaults but not the complete profile.
+
 This fork compiles our Alacritty preferences into the executable. Installing
 the macOS app bundle provides the theme without an `alacritty.toml` file.
 The default Menlo font is supplied by macOS.

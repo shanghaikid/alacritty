@@ -1,0 +1,27 @@
+#!/bin/bash
+# Called asynchronously by tmux; keep Git queries out of shell startup.
+cd -- "${1:-$HOME}" 2>/dev/null || exit 0
+
+directory=${PWD##*/}
+[[ "$PWD" == "$HOME" ]] && directory='~'
+[[ "$PWD" == / ]] && directory='/'
+
+shorten() {
+    local text=$1 limit=$2
+    if (( ${#text} > limit )); then
+        printf '%s…' "${text:0:$((limit - 1))}"
+    else
+        printf '%s' "$text"
+    fi
+}
+
+# Read only the branch/HEAD, without scanning the working tree.
+branch=$(GIT_OPTIONAL_LOCKS=0 git symbolic-ref --quiet --short HEAD 2>/dev/null) ||
+    branch=$(GIT_OPTIONAL_LOCKS=0 git rev-parse --short=7 HEAD 2>/dev/null) || branch=''
+
+shorten "$directory" 24
+if [[ -n "$branch" ]]; then
+    printf ' · '
+    shorten "$branch" 16
+fi
+printf '\n'

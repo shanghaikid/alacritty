@@ -29,6 +29,14 @@ vpath $(DMG_NAME) $(APP_DIR)
 
 all: help
 
+terminal: ## Build the complete Apple Silicon app and tmux profile (temporary builds cleaned)
+	python3 extra/build-terminal.py
+
+install-terminal: terminal ## Build and install the complete Merino terminal on Apple Silicon
+	python3 dist/Alacritty.app/Contents/Resources/terminal-profile/install.py
+
+.PHONY: terminal install-terminal
+
 help: ## Print this help message
 	@grep -E '^[a-zA-Z._-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 

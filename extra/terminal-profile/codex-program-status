@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Report Codex lifecycle hooks to the terminal using OSC 7501.
+
+stdout is exclusively Codex hook JSON. Terminal bytes go directly to the
+Codex ancestor's tty, never to tool output or the currently selected tmux pane.
+"""
+
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import sys
+
+
+def codex_terminal(parent_pid, process_rows):
+    processes = {}
+    for row in process_rows.splitlines():
+        fields = row.strip().split(None, 3)
+        if len(fields) == 4 and fields[0].isdigit() and fields[1].isdigit():
+            processes[int(fields[0])] = (int(fields[1]), fields[2], fields[3])
+    seen = set()
+    while parent_pid in processes and parent_pid not in seen:
+        seen.add(parent_pid)
+        ancestor, tty, command = processes[parent_pid]
+        if Path(command).name == "codex":
+            if re.fullmatch(r"ttys\d+|pts/\d+", tty):
+                return parent_pid, "/dev/" + tty
+            # A daemon's parent terminal must not receive a headless session's status.
+            return None
+        parent_pid = ancestor
+    return None
+
+
+def tool_key(payload):
+    arguments = payload.get("tool_input")
+    if isinstance(arguments, dict):
+        arguments = {k: v for k, v in arguments.items() if k != "description"}
+    value = [payload.get("tool_name"), arguments]
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def transition(payload, saved):
+    event = payload.get("hook_event_name")
+    session = payload.get("session_id")
+    if not isinstance(session, str) or not session:
+        return None
+    if saved.get("session") != session:
+        saved.clear()
+        saved.update(session=session, pending={})
+    pending = saved.setdefault("pending", {})
+    if event in ("SessionStart", "UserPromptSubmit", "Stop", "Interrupt", "SessionEnd"):
+        pending.clear()
+        state = {"SessionStart": "idle", "UserPromptSubmit": "working",
+                 "Stop": "done", "Interrupt": "idle", "SessionEnd": "clear"}[event]
+    elif event == "PermissionRequest":
+        key = tool_key(payload)
+        entry = pending.setdefault(key, {"kind": "permission", "count": 0})
+        entry["count"] += 1
+        state = "blocked"
+    elif event == "PreToolUse" and re.search(
+            r"(^|[._])request_user_input$", payload.get("tool_name", "")):
+        pending[tool_key(payload)] = {"kind": "question", "count": 1}
+        state = "blocked"
+    elif event == "PostToolUse":
+        entry = pending.get(tool_key(payload))
+        if entry is None:
+            return None
+        entry["count"] -= 1
+        if entry["count"] <= 0:
+            del pending[tool_key(payload)]
+        state = "blocked" if pending else "working"
+    else:
+        return None
+    kind = ""
+    if state == "blocked":
+        kind = "permission" if any(v["kind"] == "permission" for v in pending.values()) else "question"
+    report = (state, kind)
+    if saved.get("report") == list(report):
+        return None
+    saved["report"] = list(report)
+    fields = ["state=" + state, "id=codex", "app=codex"]
+    if kind:
+        fields.append("kind=" + kind)
+    return ("\x1b]7501;" + ":".join(fields) + "\x1b\\").encode()
+
+
+def write_terminal(tty, report):
+    before = os.stat(tty, follow_symlinks=False)
+    if not stat.S_ISCHR(before.st_mode) or before.st_uid != os.getuid():
+        return
+    flags = os.O_WRONLY | os.O_NOCTTY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(tty, flags)
+    try:
+        after = os.fstat(fd)
+        if (before.st_dev, before.st_ino) == (after.st_dev, after.st_ino) and os.isatty(fd):
+            os.write(fd, report)
+    finally:
+        os.close(fd)
+
+
+def main():
+    # Drain large tool results without retaining commands, prompts or output.
+    raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    while sys.stdin.buffer.read(65536):
+        pass
+    if len(raw) > 1024 * 1024:
+        return
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        return
+    parent_pid = int(sys.argv[1]) if len(sys.argv) > 1 else os.getppid()
+    rows = subprocess.run(["/bin/ps", "-axo", "pid=,ppid=,tty=,comm="],
+                          check=True, capture_output=True, text=True, timeout=0.5).stdout
+    target = codex_terminal(parent_pid, rows)
+    if target is None:
+        return
+    codex_pid, tty = target
+    state_dir = Path(os.environ.get("XDG_RUNTIME_DIR") or
+                     os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "codex-program-status"
+    state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if state_dir.stat().st_uid != os.getuid() or state_dir.is_symlink():
+        return
+    path = state_dir / (str(codex_pid) + ".json")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(fd, "r+") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        try:
+            saved = json.load(stream)
+        except (ValueError, TypeError):
+            saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+        report = transition(payload, saved)
+        if report:
+            write_terminal(tty, report)
+        stream.seek(0)
+        json.dump(saved, stream, separators=(",", ":"))
+        stream.truncate()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        pass
+    # Never approve, block or add model context; status reporting is advisory.
+    print("{}")

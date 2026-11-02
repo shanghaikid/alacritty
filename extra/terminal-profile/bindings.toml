@@ -1,0 +1,42 @@
+# Send tmux's Ctrl-B prefix plus a key. Normal Ctrl-B still works.
+[keyboard]
+bindings = [
+  { key = "D", mods = "Command", chars = "\u0002%" },
+  { key = "D", mods = "Command|Shift", chars = "\u0002\"" },
+  { key = "Enter", mods = "Command|Shift", chars = "\u0002%" },
+  { key = "Minus", mods = "Command|Shift", chars = "\u0002\"" },
+  { key = "_", mods = "Command|Shift", chars = "\u0002\"" },
+  { key = "T", mods = "Command", chars = "\u0002c" },
+  { key = "W", mods = "Command", chars = "\u0002x" },
+  # Vim-style pane navigation. macOS also needs the Hide menu shortcut remapped
+  # in org.alacritty's NSUserKeyEquivalents; install.py configures this on macOS.
+  { key = "H", mods = "Command", chars = "\u0002h" },
+  { key = "J", mods = "Command", chars = "\u0002j" },
+  { key = "K", mods = "Command", chars = "\u0002k" },
+  { key = "L", mods = "Command", chars = "\u0002l" },
+  { key = "Left", mods = "Command|Alt", chars = "\u0002\u001b[D" },
+  { key = "Right", mods = "Command|Alt", chars = "\u0002\u001b[C" },
+  { key = "Up", mods = "Command|Alt", chars = "\u0002\u001b[A" },
+  { key = "Down", mods = "Command|Alt", chars = "\u0002\u001b[B" },
+  { key = "Left", mods = "Command|Shift", chars = "\u0002\u001b[1;5D" },
+  { key = "Right", mods = "Command|Shift", chars = "\u0002\u001b[1;5C" },
+  { key = "Up", mods = "Command|Shift", chars = "\u0002\u001b[1;5A" },
+  { key = "Down", mods = "Command|Shift", chars = "\u0002\u001b[1;5B" },
+  { key = "Tab", mods = "Control", chars = "\u0002n" },
+  { key = "Tab", mods = "Control|Shift", chars = "\u0002p" },
+  # Switch tmux tabs instead of Alacritty's native tabs.
+  { key = "[", mods = "Command|Shift", chars = "\u0002p" },
+  { key = "]", mods = "Command|Shift", chars = "\u0002n" },
+  # Shift can make these logical keys { and } (for example, US input layouts).
+  { key = "{", mods = "Command|Shift", chars = "\u0002p" },
+  { key = "}", mods = "Command|Shift", chars = "\u0002n" },
+  { key = "1", mods = "Command", chars = "\u00021" },
+  { key = "2", mods = "Command", chars = "\u00022" },
+  { key = "3", mods = "Command", chars = "\u00023" },
+  { key = "4", mods = "Command", chars = "\u00024" },
+  { key = "5", mods = "Command", chars = "\u00025" },
+  { key = "6", mods = "Command", chars = "\u00026" },
+  { key = "7", mods = "Command", chars = "\u00027" },
+  { key = "8", mods = "Command", chars = "\u00028" },
+  { key = "9", mods = "Command", chars = "\u00029" },
+]

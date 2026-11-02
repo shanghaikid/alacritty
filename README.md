@@ -39,6 +39,9 @@ You can find an overview over the features available in Alacritty [here](./docs/
 
 ## Installation
 
+For this fork's complete Merino Light setup on Apple Silicon macOS, including
+tmux and the zsh prompt, see [the one-command installation guide](TERMINAL-SETUP.md).
+
 Alacritty can be installed by using various package managers on Linux, BSD,
 macOS and Windows.
 
