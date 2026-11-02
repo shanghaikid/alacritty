@@ -11,78 +11,76 @@ opacity = 1.0
 blur = false
 
 [font]
-size = 11.0
+size = 12.0
 
-# Catppuccin Mocha: https://github.com/catppuccin/alacritty
-# Copyright (c) 2021 Catppuccin; see LICENSE-CATPPUCCIN.
+# Merino Light, from Rex Beta bundled themes.json (merino-light).
+# Uses the source sRGB terminal palette; search/hints use matching accent colors.
+[colors]
+draw_bold_text_with_bright_colors = false
+indexed_colors = []
+
 [colors.primary]
-background = "#1e1e2e"
-foreground = "#cdd6f4"
-dim_foreground = "#7f849c"
-bright_foreground = "#cdd6f4"
+background = "#ffffff"
+foreground = "#1f2328"
+dim_foreground = "#57606a"
+bright_foreground = "#1f2328"
 
 [colors.cursor]
-text = "#1e1e2e"
-cursor = "#f5e0dc"
+text = "#b6d8ff"
+cursor = "#0969da"
 
 [colors.vi_mode_cursor]
-text = "#1e1e2e"
-cursor = "#b4befe"
+text = "#ffffff"
+cursor = "#8250df"
 
 [colors.search.matches]
-foreground = "#1e1e2e"
-background = "#a6adc8"
+foreground = "#ffffff"
+background = "#9d5c00"
 
 [colors.search.focused_match]
-foreground = "#1e1e2e"
-background = "#a6e3a1"
+foreground = "#ffffff"
+background = "#0969da"
 
 [colors.footer_bar]
-foreground = "#1e1e2e"
-background = "#a6adc8"
+foreground = "#1f2328"
+background = "#eceef2"
 
 [colors.hints.start]
-foreground = "#1e1e2e"
-background = "#f9e2af"
+foreground = "#ffffff"
+background = "#9d5c00"
 
 [colors.hints.end]
-foreground = "#1e1e2e"
-background = "#a6adc8"
+foreground = "#ffffff"
+background = "#57606a"
 
 [colors.selection]
-text = "#1e1e2e"
-background = "#f5e0dc"
+text = "#ffffff"
+background = "#1f2328"
 
 [colors.normal]
-black = "#45475a"
-red = "#f38ba8"
-green = "#a6e3a1"
-yellow = "#f9e2af"
-blue = "#89b4fa"
-magenta = "#f5c2e7"
-cyan = "#94e2d5"
-white = "#bac2de"
+black = "#24292f"
+red = "#cf222e"
+green = "#116329"
+yellow = "#9d5c00"
+blue = "#0969da"
+magenta = "#8250df"
+cyan = "#1b7c83"
+white = "#6e7781"
 
 [colors.bright]
-black = "#585b70"
-red = "#f38ba8"
-green = "#a6e3a1"
-yellow = "#f9e2af"
-blue = "#89b4fa"
-magenta = "#f5c2e7"
-cyan = "#94e2d5"
-white = "#a6adc8"
-
-[[colors.indexed_colors]]
-index = 16
-color = "#fab387"
-
-[[colors.indexed_colors]]
-index = 17
-color = "#f5e0dc"
+black = "#57606a"
+red = "#a40e26"
+green = "#1a7f37"
+yellow = "#c47a00"
+blue = "#218bff"
+magenta = "#a475f9"
+cyan = "#3192aa"
+white = "#8c959f"
 
 [cursor]
-style = { shape = "Block", blinking = "Never" }
+style = { shape = "Block", blinking = "On" }
+blink_interval = 500
+blink_timeout = 0
 
 [scrolling]
 history = 100000

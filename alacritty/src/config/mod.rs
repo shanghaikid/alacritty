@@ -457,13 +457,16 @@ mod tests {
         assert!(config.pty_config().shell.is_none());
 
         let value = toml::Value::try_from(&config).unwrap();
-        assert_eq!(value["colors"]["primary"]["background"].as_str(), Some("#1e1e2e"));
-        assert_eq!(value["font"]["size"].as_float(), Some(11.));
+        assert_eq!(value["colors"]["primary"]["background"].as_str(), Some("#ffffff"));
+        assert_eq!(value["font"]["size"].as_float(), Some(12.));
+        assert_eq!(config.cursor.blink_interval(), 500);
+        assert_eq!(config.cursor.blink_timeout(), std::time::Duration::ZERO);
         #[cfg(target_os = "macos")]
         {
-            assert_eq!(config.font.normal().family, "JetBrainsMono Nerd Font Mono");
+            assert_eq!(config.font.normal().family, "Menlo");
             assert!(config.term_options().grapheme_clusters);
             assert_eq!(value["window"]["decorations"].as_str(), Some("Transparent"));
+            assert_eq!(value["window"]["decorations_theme_variant"].as_str(), Some("Light"));
             assert_eq!(value["window"]["option_as_alt"].as_str(), Some("Both"));
             assert!(config.global_hotkey().enabled);
             assert_eq!(value["keyboard"]["global_hotkey"]["key"].as_str(), Some("KeyL"));
@@ -472,11 +475,12 @@ mod tests {
     }
 
     #[test]
-    fn explicit_theme_palette_replaces_embedded_indexed_colors() {
+    fn explicit_indexed_palette_overrides_xterm_defaults() {
         use crate::display::color::{List, Rgb};
 
         let config =
-            deserialize_ui_config(toml::from_str("[colors]\nindexed_colors = []").unwrap()).unwrap();
+            deserialize_ui_config(toml::from_str("[colors]\nindexed_colors = []").unwrap())
+                .unwrap();
         let palette = List::from(&config.colors);
         assert_eq!(palette[16], Rgb::new(0, 0, 0));
         assert_eq!(palette[17], Rgb::new(0, 0, 95));
@@ -509,7 +513,7 @@ mod tests {
         fs::write(&path, "[window.padding]\nx = 40\n").unwrap();
         let config = reload(&path, &mut Options::default()).unwrap();
         assert_eq!(config.window.padding(1.), (40., 24.));
-        assert_eq!(config.font.size(), crossfont::Size::new(11.));
+        assert_eq!(config.font.size(), crossfont::Size::new(12.));
         assert_eq!(config.config_paths, vec![path.clone()]);
 
         fs::remove_file(&path).unwrap();

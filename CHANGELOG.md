@@ -27,6 +27,8 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Changed
 
+- Use Merino Light colors, 12-point text, and a blinking block cursor by default
+- Use Menlo and light window decorations by default on macOS
 - Don't highlight hints on hover when the mouse cursor is hidden
 - IME is disabled in Vi mode on X11
 - Require explicit tap to enable IME with touch input

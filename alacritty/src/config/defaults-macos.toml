@@ -1,16 +1,17 @@
-# macOS additions to defaults.toml; fonts are included in Alacritty.app.
+# macOS additions to defaults.toml; matches Rex Beta terminal typography.
 [terminal]
 grapheme_clusters = true
 
 [window]
 decorations = "Transparent"
+decorations_theme_variant = "Light"
 option_as_alt = "Both"
 
 [font]
-normal = { family = "JetBrainsMono Nerd Font Mono", style = "Light" }
-bold = { style = "Regular" }
-italic = { style = "Light Italic" }
-bold_italic = { style = "Italic" }
+normal = { family = "Menlo", style = "Regular" }
+bold = { style = "Bold" }
+italic = { style = "Italic" }
+bold_italic = { style = "Bold Italic" }
 
 [keyboard.global_hotkey]
 enabled = true

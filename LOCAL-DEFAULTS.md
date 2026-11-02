@@ -1,20 +1,22 @@
 # Built-in defaults
 
 This fork compiles our Alacritty preferences into the executable. Installing
-the macOS app bundle provides the theme and fonts without an `alacritty.toml`
-file or a separate font installation.
+the macOS app bundle provides the theme without an `alacritty.toml` file.
+The default Menlo font is supplied by macOS.
 
 ## Included
 
-- Catppuccin Mocha colors, a block cursor without blinking, and 11-point text.
+- Merino Light colors, a blinking block cursor, and 12-point text.
 - Window padding of 12 × 24, dynamic padding, and maximized startup.
 - On macOS, a transparent title bar and both Option keys acting as Alt.
 - On macOS, Cmd+Shift+L globally shows/hides Alacritty without Hammerspoon.
   Summoning restores the last used window, including a minimized window.
 - 100,000 lines of history, selection copied to the clipboard, and the mouse
   pointer hidden while typing.
-- On macOS, JetBrainsMono Nerd Font Mono Light, Regular, Light Italic, and
-  Italic from Nerd Fonts v3.5.1, bundled with the original license and README.
+- On macOS, Menlo Regular, Bold, Italic, and Bold Italic with natural line
+  height, matching Rex Beta’s default typography. Native decorations use Light.
+- The previously bundled JetBrainsMono Nerd Font files remain available for
+  explicit font overrides.
 - On macOS, Cmd+Shift+[ / ] (including the { / } logical keys) and Ctrl+Tab /
   Ctrl+Shift+Tab select native tabs; Ctrl+Cmd+F toggles maximization.
   Alacritty's existing Cmd+T, Cmd+1–9, and font-size shortcuts still apply.
@@ -116,11 +118,51 @@ Rust's `include_str!`; no file is copied to a user's home directory at startup.
 Key bindings stay in Rust so an explicit user binding replaces its matching
 default, instead of running both actions. Existing tmux launch commands and
 tmux key bindings continue to work when supplied by a user configuration.
-This fork does not include tmux configuration or require tmux to start.
+This fork does not load tmux configuration or require tmux to start. Optional
+tmux appearance settings are provided under `extra/`.
 
-The built-in colors follow the official
-[Catppuccin Mocha palette](https://github.com/catppuccin/alacritty/blob/main/catppuccin-mocha.toml),
-licensed under MIT; the original notice is in `LICENSE-CATPPUCCIN`.
+The built-in colors use the Merino Light source sRGB terminal palette from
+Rex Beta's bundled `SuperUI_SuperDesignTokens.bundle/Contents/Resources/themes.json`
+(`merino-light`): white background, dark text, and a blue cursor. Search, hints,
+and the footer use matching palette accents. The previous Catppuccin license
+notice remains in `LICENSE-CATPPUCCIN`.
+
+## Matching Rex Beta on an existing installation
+
+Existing user imports override embedded defaults. A previous iTerm2 profile
+can retain a different font, fixed line height, and a dark tmux tab bar even
+when the terminal palette has changed. Apply the terminal font and tmux style
+profiles together. Templates are [`extra/rex-appearance.toml`](extra/rex-appearance.toml),
+[`extra/merino-light.toml`](extra/merino-light.toml), and
+[`extra/merino-light-tmux.conf`](extra/merino-light-tmux.conf). Copy them into
+`~/.config/alacritty/`, then import the appearance file followed by the color
+file in the existing `alacritty.toml`:
+
+```toml
+[general]
+import = [
+  # Keep existing non-appearance imports before these entries.
+  "~/.config/alacritty/rex-appearance.toml",
+  "~/.config/alacritty/merino-light.toml",
+]
+```
+
+These imports also work with an already-installed binary. Replace the old
+iTerm2 appearance import, rather than stacking both font profiles; otherwise
+its fixed line height remains in the merged configuration. Load the tmux
+profile after shared bindings, and use the same profile when reloading tmux.
+
+The local Rex Beta setup has font smoothing disabled. Alacritty’s CoreText rasterizer reads
+the app-specific `AppleFontSmoothing` preference once per process. Use
+`defaults write org.alacritty AppleFontSmoothing -int 0`, then relaunch Alacritty
+to match that rendering; changing only the font does not clear this cache.
+This preference does not change other applications.
+
+Codex CLI caches its terminal foreground/background during startup. Sessions
+started with the old dark palette can retain dark prompt backgrounds after
+Alacritty reloads a light theme. Re-enter those Codex sessions after applying
+the light terminal and tmux defaults. Existing tmux panes and session histories
+can remain intact. Codex syntax highlighting has its own `/theme` picker.
 
 ## Fonts and packaging
 
@@ -150,9 +192,8 @@ Use `make app-universal` with both Rust macOS targets installed for a bundle
 that supports Intel and Apple Silicon. The normal Makefile copies the full
 app template, including its fonts and font registration key.
 
-Running only `target/release/alacritty` retains the embedded settings but has
-no bundled font resources; it uses an installed matching font or falls back
-to Menlo. Use the `.app` bundle for a self-contained macOS installation.
+Running only `target/release/alacritty` retains the embedded settings and uses
+macOS’s Menlo font. The `.app` bundle also includes the optional Nerd Fonts.
 Other platforms retain their native default font families.
 `TERM` retains upstream's automatic detection, using `xterm-256color` when
 Alacritty's terminfo has not been separately installed on a fresh system.

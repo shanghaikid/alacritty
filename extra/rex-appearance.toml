@@ -1,0 +1,21 @@
+# Match Rex Beta's local Terminal settings: Menlo Regular, 12 pt, natural line height.
+[window]
+decorations_theme_variant = "Light"
+opacity = 1.0
+blur = false
+padding = { x = 12, y = 24 }
+dynamic_padding = true
+
+[font]
+size = 12.0
+normal = { family = "Menlo", style = "Regular" }
+bold = { family = "Menlo", style = "Bold" }
+italic = { family = "Menlo", style = "Italic" }
+bold_italic = { family = "Menlo", style = "Bold Italic" }
+offset = { x = 0, y = 0 }
+glyph_offset = { x = 0, y = 0 }
+
+[cursor]
+style = { shape = "Block", blinking = "On" }
+blink_interval = 500
+blink_timeout = 0

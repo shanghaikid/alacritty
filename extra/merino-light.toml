@@ -1,0 +1,63 @@
+# Merino Light, from Rex Beta bundled themes.json (merino-light).
+# Uses the source sRGB terminal palette; search/hints use matching accent colors.
+[colors]
+draw_bold_text_with_bright_colors = false
+indexed_colors = []
+
+[colors.primary]
+background = "#ffffff"
+foreground = "#1f2328"
+dim_foreground = "#57606a"
+bright_foreground = "#1f2328"
+
+[colors.cursor]
+text = "#b6d8ff"
+cursor = "#0969da"
+
+[colors.vi_mode_cursor]
+text = "#ffffff"
+cursor = "#8250df"
+
+[colors.search.matches]
+foreground = "#ffffff"
+background = "#9d5c00"
+
+[colors.search.focused_match]
+foreground = "#ffffff"
+background = "#0969da"
+
+[colors.footer_bar]
+foreground = "#1f2328"
+background = "#eceef2"
+
+[colors.hints.start]
+foreground = "#ffffff"
+background = "#9d5c00"
+
+[colors.hints.end]
+foreground = "#ffffff"
+background = "#57606a"
+
+[colors.selection]
+text = "#ffffff"
+background = "#1f2328"
+
+[colors.normal]
+black = "#24292f"
+red = "#cf222e"
+green = "#116329"
+yellow = "#9d5c00"
+blue = "#0969da"
+magenta = "#8250df"
+cyan = "#1b7c83"
+white = "#6e7781"
+
+[colors.bright]
+black = "#57606a"
+red = "#a40e26"
+green = "#1a7f37"
+yellow = "#c47a00"
+blue = "#218bff"
+magenta = "#a475f9"
+cyan = "#3192aa"
+white = "#8c959f"
