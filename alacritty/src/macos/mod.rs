@@ -7,6 +7,7 @@ pub mod locale;
 pub mod notification;
 pub mod path_hint;
 pub mod proc;
+pub mod theme_button;
 
 pub fn disable_autofill() {
     unsafe {

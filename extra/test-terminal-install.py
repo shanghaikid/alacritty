@@ -10,6 +10,7 @@ import select
 import shlex
 import shutil
 import signal
+import sys
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,7 @@ import tomllib
 import unittest
 
 EXTRA = Path(__file__).resolve().parent
+sys.path.insert(0, str(EXTRA / 'terminal-profile'))
 spec = importlib.util.spec_from_file_location('terminal_install', EXTRA / 'terminal-profile/install.py')
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
@@ -33,7 +35,8 @@ class Installation(unittest.TestCase):
         self.app = self.root / 'Applications with spaces/Alacritty.app'
         source = self.app / 'Contents/Resources/terminal-profile'
         shutil.copytree(EXTRA / 'terminal-profile', source)
-        for name in ('merino-light.toml', 'rex-appearance.toml', 'merino-light-tmux.conf',
+        for name in ('merino-light.toml', 'merino-dark.toml', 'rex-appearance.toml',
+                     'merino-light-tmux.conf', 'merino-dark-tmux.conf',
                      'tmux-shift-selection.conf', 'tmux-mouse-anchor-input.py'):
             shutil.copy2(EXTRA / name, source / name)
         (self.app / 'Contents/MacOS').mkdir()
@@ -91,6 +94,57 @@ class Installation(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.install()
         self.assertFalse(self.config.exists())
+
+    def test_incremental_install_keeps_dotfiles_links(self):
+        spec = importlib.util.spec_from_file_location('theme_upgrade', EXTRA / 'install-merino-toggle.py')
+        upgrade = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(upgrade)
+        dotfiles = self.home / 'dotfiles'
+        dotfiles.mkdir()
+        original = dotfiles / 'alacritty.toml'
+        original.write_text('[font]\nsize = 15\n')
+        self.config.mkdir(parents=True)
+        (self.config / 'alacritty.toml').symlink_to(original)
+        for name in ('.zshrc', '.tmux.conf'):
+            (dotfiles / name).write_text('# user configuration\n')
+            (self.home / name).symlink_to(dotfiles / name)
+        upgrade.install(self.home, TMUX)
+        upgrade.install(self.home, TMUX)
+        self.assertEqual((self.config / 'alacritty-before-theme.toml').resolve(), original.resolve())
+        self.assertEqual(original.read_text(), '[font]\nsize = 15\n')
+        for name in ('.zshrc', '.tmux.conf'):
+            self.assertTrue((self.home / name).is_symlink())
+            self.assertEqual((dotfiles / name).read_text(), '# user configuration\n')
+        self.assertEqual((self.config / 'tmux.conf').read_text().count('theme.conf'), 1)
+
+    @unittest.skipUnless(TMUX.exists(), 'TEST_TMUX must point to the OSC 7501 tmux build')
+    def test_theme_switch_updates_tmux_and_survives_install(self):
+        self.install()
+        socket = self.root / 'theme-socket'
+        command = [str(TMUX), '-S', str(socket)]
+        env = dict(os.environ, HOME=str(self.home), ZDOTDIR=str(self.home))
+        env.pop('TMUX', None)
+        rc = (self.home / '.zshrc').read_bytes()
+        toggle = tomllib.loads((self.config / 'alacritty.toml').read_text())['window']['theme_toggle_command']
+        try:
+            subprocess.run(command + ['-f', str(self.profile / 'tmux.conf'),
+                                      'new-session', '-d', '-s', 'test'], env=env, check=True)
+            deadline = time.monotonic() + 5
+            while not (self.profile / 'servers.json').exists():
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(.02)
+            for background, appearance in (('#0d1117', 'Dark'), ('#ffffff', 'Light')):
+                subprocess.run([toggle['program']] + toggle['args'], check=True, capture_output=True)
+                active = tomllib.loads((self.profile / 'active-theme.toml').read_text())
+                self.assertEqual(active['colors']['primary']['background'], background)
+                self.assertEqual(active['window']['decorations_theme_variant'], appearance)
+                style = subprocess.check_output(command + ['show-options', '-gwv', 'window-style'], text=True)
+                self.assertIn(background, style)
+                self.install()
+                self.assertEqual(tomllib.loads((self.profile / 'active-theme.toml').read_text()), active)
+                self.assertEqual((self.home / '.zshrc').read_bytes(), rc)
+        finally:
+            subprocess.run(command + ['kill-server'], env=env, capture_output=True)
 
     @unittest.skipUnless(TMUX.exists(), 'TEST_TMUX must point to the OSC 7501 tmux build')
     def test_installed_launcher_reconnects(self):

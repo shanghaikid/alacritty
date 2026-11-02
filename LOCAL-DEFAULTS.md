@@ -134,6 +134,12 @@ notice remains in `LICENSE-CATPPUCCIN`.
 
 ## Matching Rex Beta on an existing installation
 
+For the native macOS title-bar **◐** button and coordinated Merino Light / Dark
+switching, use the [existing-machine upgrade](TERMINAL-SETUP.md#existing-dotfiles-based-machines).
+Both palettes are bundled; there is no runtime Rex dependency. The button is
+configured by `window.theme_toggle_command` and is hidden when that command is
+absent. Its command runs asynchronously, with failures written to the app log.
+
 Existing user imports override embedded defaults. A previous iTerm2 profile
 can retain a different font, fixed line height, and a dark tmux tab bar even
 when the terminal palette has changed. Apply the terminal font and tmux style

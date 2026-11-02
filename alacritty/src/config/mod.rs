@@ -445,6 +445,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn merino_theme_overlay_preserves_shell_and_font() {
+        let directory = tempfile::tempdir().unwrap();
+        let active = directory.path().join("active-theme.toml");
+        let path = directory.path().join("alacritty.toml");
+        fs::write(
+            &path,
+            "[general]\nimport = ['active-theme.toml']\n[font]\nsize = 17\n\
+            [terminal]\nshell = '/bin/zsh'\n[window.theme_toggle_command]\n\
+            program = '/usr/bin/python3'\nargs = ['theme.py', 'toggle']\n",
+        )
+        .unwrap();
+        for (source, background, appearance) in [
+            (include_str!("../../../extra/merino-dark.toml"), "#0d1117", "Dark"),
+            (include_str!("../../../extra/merino-light.toml"), "#ffffff", "Light"),
+        ] {
+            fs::write(&active, source).unwrap();
+            let config = load_config(Some(path.clone()), &mut Options::default());
+            let value = toml::Value::try_from(&config).unwrap();
+            assert_eq!(value["colors"]["primary"]["background"].as_str(), Some(background));
+            assert_eq!(value["window"]["decorations_theme_variant"].as_str(), Some(appearance));
+            assert_eq!(value["font"]["size"].as_float(), Some(17.));
+            assert_eq!(
+                config.pty_config().shell,
+                Some(alacritty_terminal::tty::Shell::new("/bin/zsh".into(), Vec::new()))
+            );
+            assert_eq!(config.window.theme_toggle_command.unwrap().args(), ["theme.py", "toggle"]);
+        }
+    }
+
+    #[test]
     fn no_user_config_uses_embedded_defaults() {
         let config = load_config(None, &mut Options::default());
         assert_eq!(config.window.padding(1.), (12., 24.));

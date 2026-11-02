@@ -31,6 +31,10 @@ builds only the terminal emulator.
 
 - Merino Light terminal colors, Menlo 12, natural line height, a blinking block
   cursor, Light decorations, and app-specific font smoothing disabled.
+- A native **◐** button at the right of the macOS title bar switches between
+  Merino Light and Merino Dark. It updates the palette, native appearance, and
+  registered tmux servers together, and remembers the selection across restarts
+  and upgrades. The button occupies existing title-bar space, without adding a row.
 - A bundled tmux built from revision
   `b60f804c97adee1aaa7bd9f005af90bdfc0b949d` of
   [shanghaikid/tmux](https://github.com/shanghaikid/tmux). It links this checkout's
@@ -51,6 +55,46 @@ The tmux server is named `alacritty-merino`. Reopening Alacritty reattaches to
 the same session without reloading key tables or creating extra tabs. Other
 tmux servers, including this machine's older `default` server, are left running.
 Inside the managed panes, `tmux` resolves to the bundled binary.
+
+## Existing dotfiles-based machines
+
+Keep the existing dotfiles and tmux launcher. To add the native button without
+replacing `.zshrc`, `.tmux.conf`, their symlinks, or personal Alacritty settings:
+
+```sh
+git pull --ff-only
+make terminal
+python3 extra/install-merino-toggle.py
+```
+
+Then quit Alacritty, install `dist/Alacritty.app` over the previous app, and reopen
+it. The upgrade saves the previous main config as `alacritty-before-theme.toml`
+and imports it before the active theme. If it was a dotfiles symlink, the saved
+import remains linked. Existing non-theme settings keep working.
+The installer prints the backup directory. It does not edit shell startup files.
+
+The updated dotfiles `.tmux.conf` conditionally loads
+`~/.config/alacritty/theme.conf`, so reloading shared settings keeps the selected
+theme. Its installer also preserves the managed Alacritty config. For an already
+running server, source `~/.config/alacritty/tmux.conf` once; this registers the
+server for native button updates. The new-machine installer does this at startup.
+
+The current dotfiles prompt uses ANSI `blue`, `yellow`, `green`, `red`, and color
+8, so both existing and new zsh prompts follow the selected palette automatically.
+Programs that hardcode RGB colors or cache terminal colors, including existing
+Codex instances, may need their own theme setting or a restart/resume. Switching
+Merino does not restart applications, interrupt commands, or change Codex trust.
+The official Codex CLI is kept unchanged. In the tested Codex 0.166.0, input-box
+colors are cached at startup; after switching, use `/quit`, then `codex resume`
+to choose the original conversation. `/theme` changes syntax highlighting and
+does not refresh that background cache.
+
+The theme helper is also usable from a shell:
+
+```sh
+# Existing-machine overlay; use terminal-profile instead on fresh installations.
+python3 ~/.config/alacritty/terminal-theme/theme.py toggle
+```
 
 ## Installation and upgrades
 
@@ -107,6 +151,12 @@ staging=$(mktemp -d)
 python3 dist/Alacritty.app/Contents/Resources/terminal-profile/install.py \
   --home "$staging/home" --app-dir "$staging/Applications" --skip-preferences
 ```
+
+`python3 extra/theme-button-acceptance.py dist/Alacritty.app` additionally runs a
+disposable macOS app with a temporary native probe. It clicks the real NSButton,
+checks runtime Alacritty and tmux colors, verifies fixed content dimensions,
+resizes and reloads the control, and reopens the app to verify persistence.
+It does not inject code into an installed or already running application.
 
 The profile assets originally maintained in `shanghaikid/dotfiles` are now kept
 here so the installer has a single source checkout. Do not copy personal shell

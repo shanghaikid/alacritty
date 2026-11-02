@@ -113,6 +113,8 @@ pub struct Window {
     /// Hold the window when terminal exits.
     pub hold: bool,
 
+    #[cfg(target_os = "macos")]
+    theme_button: Option<crate::macos::theme_button::ThemeButton>,
     window: WinitWindow,
 
     /// Current window title.
@@ -206,7 +208,7 @@ impl Window {
         log::info!("Window scale factor: {scale_factor}");
         let is_x11 = matches!(window.window_handle().unwrap().as_raw(), RawWindowHandle::Xlib(_));
 
-        Ok(Self {
+        let result = Self {
             hold: options.terminal_options.hold,
             requested_redraw: false,
             displayed_title: identity.title.clone(),
@@ -220,7 +222,16 @@ impl Window {
             window,
             is_x11,
             ime_inhibitor: Default::default(),
-        })
+            #[cfg(target_os = "macos")]
+            theme_button: None,
+        };
+        #[cfg(target_os = "macos")]
+        let result = {
+            let mut result = result;
+            result.update_theme_button(&config.window);
+            result
+        };
+        Ok(result)
     }
 
     #[inline]
@@ -437,6 +448,27 @@ impl Window {
 
     pub fn set_theme(&self, theme: Option<Theme>) {
         self.window.set_theme(theme);
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn update_theme_button(&mut self, config: &WindowConfig) {
+        let Some(command) = &config.theme_toggle_command else {
+            self.theme_button = None;
+            return;
+        };
+        if let Some(button) = &self.theme_button {
+            button.update(command.clone(), config.theme());
+        } else if let RawWindowHandle::AppKit(handle) = self.raw_window_handle() {
+            // SAFETY: winit owns this view and this code runs on AppKit's main thread.
+            let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+            if let Some(window) = view.window() {
+                self.theme_button = Some(crate::macos::theme_button::ThemeButton::new(
+                    window,
+                    command.clone(),
+                    config.theme(),
+                ));
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]

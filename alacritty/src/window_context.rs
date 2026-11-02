@@ -292,6 +292,8 @@ impl WindowContext {
 
         // Always reload the theme to account for auto-theme switching.
         self.display.window.set_theme(self.config.window.theme());
+        #[cfg(target_os = "macos")]
+        self.display.window.update_theme_button(&self.config.window);
 
         // Update display if either padding options or resize increments were changed.
         let window_config = &old_config.window;

@@ -23,7 +23,7 @@ def run(*args, cwd=ROOT, env=None, **kwargs):
     return subprocess.run(list(map(str, args)), cwd=cwd, env=env, check=True, **kwargs)
 
 
-def build(output):
+def build(output, test=False):
     if platform.system() != 'Darwin' or platform.machine() != 'arm64':
         raise RuntimeError('Use native Apple Silicon macOS (not a Rosetta shell)')
     required = ('cargo', 'git', 'brew', 'make', 'cc', 'autoconf', 'automake',
@@ -53,6 +53,9 @@ def build(output):
         run('cargo', 'build', '--locked', '--release', '--target', TARGET,
             '--target-dir', target, '-p', 'alacritty', '-p', 'alacritty_status', env=env)
         release = target / TARGET / 'release'
+        if test:
+            run('cargo', 'test', '--locked', '--release', '--target', TARGET,
+                '--target-dir', target, '-p', 'alacritty', '--bin', 'alacritty', 'config::', env=env)
         tmux_env = dict(env,
                         CPPFLAGS=f'-I{brew}/opt/libevent/include -I{brew}/opt/ncurses/include -I{brew}/opt/utf8proc/include',
                         LDFLAGS=f'-L{brew}/opt/libevent/lib -L{brew}/opt/ncurses/lib -L{brew}/opt/utf8proc/lib',
@@ -76,7 +79,8 @@ def build(output):
         profile = resources / 'terminal-profile'
         shutil.copytree(ROOT / 'extra/terminal-profile', profile,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-        for name in ('merino-light.toml', 'rex-appearance.toml', 'merino-light-tmux.conf',
+        for name in ('merino-light.toml', 'merino-dark.toml', 'rex-appearance.toml',
+                     'merino-light-tmux.conf', 'merino-dark-tmux.conf',
                      'tmux-shift-selection.conf', 'tmux-mouse-anchor-input.py'):
             shutil.copy2(ROOT / 'extra' / name, profile / name)
         shutil.copy2(tmux / 'COPYING', resources / 'LICENSE-tmux')
@@ -113,5 +117,6 @@ def build(output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/Alacritty.app')
+    parser.add_argument('--test', action='store_true', help='Run config regression tests before cleanup')
     args = parser.parse_args()
-    build(args.output.resolve())
+    build(args.output.resolve(), args.test)

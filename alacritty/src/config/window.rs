@@ -11,7 +11,7 @@ use winit::window::{Fullscreen, Theme as WinitTheme, WindowLevel as WinitWindowL
 use alacritty_config_derive::{ConfigDeserialize, SerdeReplace};
 
 use crate::config::LOG_TARGET_CONFIG;
-use crate::config::ui_config::{Delta, Percentage};
+use crate::config::ui_config::{Delta, Percentage, Program};
 
 /// Default Alacritty name, used for window title and class.
 pub const DEFAULT_NAME: &str = "Alacritty";
@@ -65,6 +65,9 @@ pub struct WindowConfig {
 
     /// Window level.
     pub level: WindowLevel,
+
+    /// Command for the native macOS title-bar theme button. None hides it.
+    pub theme_toggle_command: Option<Program>,
 }
 
 impl Default for WindowConfig {
@@ -85,6 +88,7 @@ impl Default for WindowConfig {
             decorations_theme_variant: Default::default(),
             option_as_alt: Default::default(),
             level: Default::default(),
+            theme_toggle_command: None,
         }
     }
 }

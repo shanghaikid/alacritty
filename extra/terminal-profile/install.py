@@ -12,6 +12,8 @@ import shutil
 import subprocess
 import tempfile
 
+import theme
+
 BEGIN = '# >>> Alacritty Merino profile >>>'
 END = '# <<< Alacritty Merino profile <<<'
 HOOK_COMMAND = '"$HOME/.local/bin/codex-program-status" "$PPID"'
@@ -87,6 +89,8 @@ def install_profile(app, home, config, zsh_dir, codex_dir):
     hooks = codex_dir / 'hooks.json'
     new_hooks = merge_hooks(json.loads(hooks.read_text()) if hooks.exists() else {})
     writer = Writer(home)
+    toggle = theme.install(writer, source, profile, tmux)
+    writer.write(config / 'theme.conf', 'source-file ' + shlex.quote(str(profile / 'theme.conf')) + '\n')
     for name in ('prompt.zsh', 'mouse-reset.zsh', 'window-name', 'start.zsh',
                  'merino-light.toml', 'rex-appearance.toml', 'merino-light-tmux.conf',
                  'tmux-mouse-anchor-input.py'):
@@ -103,12 +107,14 @@ def install_profile(app, home, config, zsh_dir, codex_dir):
     base = (source / 'tmux-base.conf').read_text().replace(
         '@TAB_LABEL@', 'setw -g @tab-label ' + shlex.quote(label))
     base += 'set-environment -g ALACRITTY_TERMINAL_PROFILE merino\n'
-    for name in ('merino-light-tmux.conf', 'tmux-shift-selection.conf'):
+    for name in ('theme.conf', 'tmux-shift-selection.conf'):
         base += 'source-file ' + shlex.quote(str(profile / name)) + '\n'
     base += 'bind r source-file ' + shlex.quote(str(profile / 'tmux.conf')) + '\n'
     writer.write(profile / 'tmux.conf', base)
     main = '[general]\nimport = ' + json.dumps([
-        str(profile / 'rex-appearance.toml'), str(profile / 'merino-light.toml')]) + '\n'
+        str(profile / 'rex-appearance.toml'), str(profile / 'active-theme.toml')]) + '\n'
+    main += '\n[window.theme_toggle_command]\nprogram = ' + json.dumps(toggle['program']) + '\n'
+    main += 'args = ' + json.dumps(toggle['args']) + '\n'
     main += '\n[terminal]\nshell = ' + json.dumps(str(profile / 'start.zsh')) + '\n'
     main += '\n[env]\nALACRITTY_TERMINAL_PROFILE = "merino"\n'
     if zsh_dir != home:

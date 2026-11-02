@@ -1,5 +1,8 @@
 # Merino Light, from Rex Beta bundled themes.json (merino-light).
 # Uses the source sRGB terminal palette; search/hints use matching accent colors.
+[window]
+decorations_theme_variant = "Light"
+
 [colors]
 draw_bold_text_with_bright_colors = false
 indexed_colors = []

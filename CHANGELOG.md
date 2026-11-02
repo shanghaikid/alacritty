@@ -18,6 +18,8 @@ Notable changes to the `alacritty_terminal` crate are documented in its
 
 ### Added
 
+- Native macOS title-bar theme button with persistent Merino Light / Dark
+  profiles and coordinated tmux colors, including an upgrade for dotfiles setups
 - Paste clipboard images as temporary PNG file paths on macOS with Cmd+V
 - Native macOS global show/hide hotkey (Cmd+Shift+L by default), configurable
   through `keyboard.global_hotkey`, with live reload and minimized-window restore
