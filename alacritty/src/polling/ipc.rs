@@ -68,6 +68,16 @@ impl IpcListener {
 
         // Handle IPC events.
         match message {
+            #[cfg(target_os = "macos")]
+            SocketMessage::AgentNotify(notification) => {
+                let _ = self
+                    .event_proxy
+                    .send_event(Event::new(EventType::AgentNotify(notification), None));
+            },
+            #[cfg(target_os = "macos")]
+            SocketMessage::AgentNotifications => {
+                crate::macos::notification::list_delivered(stream);
+            },
             SocketMessage::CreateWindow(options) => {
                 let event = Event::new(EventType::CreateWindow(options), None);
                 let _ = self.event_proxy.send_event(event);
@@ -149,6 +159,11 @@ fn handle_reply(stream: &UnixStream, message: &SocketMessage) -> IoResult<()> {
         // Write requested config to STDOUT.
         (SocketMessage::GetConfig(..), SocketReply::GetConfig(config))
         | (SocketMessage::ProgramStatus(..), SocketReply::ProgramStatus(config)) => {
+            println!("{config}");
+            Ok(())
+        },
+        #[cfg(target_os = "macos")]
+        (SocketMessage::AgentNotifications, SocketReply::ProgramStatus(config)) => {
             println!("{config}");
             Ok(())
         },

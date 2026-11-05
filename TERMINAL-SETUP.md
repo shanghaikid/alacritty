@@ -152,7 +152,63 @@ with macOS `defaults`. The previous preference domain is saved as
 `org.alacritty-before.plist` in the configuration backup (empty if no previous
 domain existed). Other applications' rendering preferences are untouched.
 
+## Codex notifications on macOS
+
+The title-bar bell switches Codex notifications on or off for the application.
+It uses a fixed-size native symbol, synchronizes across windows, and remembers
+the setting in `org.alacritty` → `CodexNotificationsEnabled` (default: on).
+Turning it off withdraws existing Codex notifications; turning it back on does
+not replay events that happened while muted. Ordinary shell-command completion
+notifications and OSC status badges are independent of this switch.
+
+The installed `codex-program-status` hook starts one local observer per live
+terminal Codex session. `codex_notifications.py` handles completion, structured
+`request_user_input` / `request_user_input_async` questions, and manual approval
+requests. Automatic approval review is silent. Plain prose is not classified as
+a question by punctuation. A pending asynchronous question remains pending
+after the tool returns `accepted`, and is cleared by its matching answer.
+
+Completion waits for the turn to end and a short settling interval. Active
+goals suppress intermediate completions; a completed goal notifies after its
+final reply. Blocked goals and budget/usage stops have distinct messages.
+`thread/goal/get` is the primary source of goal state; a read-only, schema-checked
+adapter for Codex 0.166's `goals_1.sqlite` supports standalone CLI installations
+without the shared daemon. Unknown schemas/API failures never imply success.
+The incremental transcript adapter is version-specific and must be checked when
+upgrading Codex. It does not load transcripts into the model or copy their text
+into notifications/state files.
+
+The observer resolves the live tmux client rather than trusting a stale socket
+inherited from an old tmux server. Notifications are suppressed only when the
+corresponding window and pane are being viewed. Clicking one focuses that window
+and pane. Viewing the session, answering the question, starting new work, or
+ending the session removes obsolete notifications. Each session has one stable
+notification identifier; a dismissed event does not repeatedly alert.
+
+macOS must allow Alacritty notifications in System Settings → Notifications.
+The existing Codex `notify` command is not replaced. Existing trusted hook
+definitions do not change during this upgrade; a fresh installation still needs
+the standard Codex `/hooks` trust step. The runtime diagnostics are under
+`${XDG_STATE_HOME:-~/.local/state}/codex-notifications/<session>/status.json`;
+these contain lifecycle identifiers/counts, not prompts or tool output.
+
+After upgrading the app and installed helper, open a window with the new binary.
+Existing tmux sessions remain intact. An old running Alacritty process does not
+gain the new native notification or title-bar code until it is restarted.
+
 ## Validation
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 extra/test-codex-notifications.py
+PYTHONDONTWRITEBYTECODE=1 python3 extra/codex-notification-acceptance.py dist/Alacritty.app
+```
+
+Notification acceptance uses a disposable app process, tmux server, observer
+processes, and synthetic lifecycle records. It exercises the real macOS
+notification center, real NSButton target/action, and installed notification
+delegate; it does not synthesize physical input or alter existing terminal
+sessions. The bell preference is restored afterward. Rust compilation should
+use an isolated temporary target, with cleanup on failure and success.
 
 ```sh
 TEST_TMUX="$PWD/dist/Alacritty.app/Contents/MacOS/tmux" \

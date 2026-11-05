@@ -109,6 +109,8 @@ pub struct Processor {
     global_hotkey: Option<GlobalHotkey>,
     #[cfg(target_os = "macos")]
     last_focused_window: Option<WindowId>,
+    #[cfg(target_os = "macos")]
+    agent_notifications: crate::macos::notification::AgentNotifications,
 }
 
 impl Processor {
@@ -140,6 +142,8 @@ impl Processor {
         }
 
         Processor {
+            #[cfg(target_os = "macos")]
+            agent_notifications: crate::macos::notification::AgentNotifications::new(proxy.clone()),
             initial_window_options,
             initial_window_error: None,
             cli_options,
@@ -218,12 +222,19 @@ impl Processor {
         event_loop: &ActiveEventLoop,
         window_options: WindowOptions,
     ) -> Result<(), Box<dyn Error>> {
-        let window_context = WindowContext::initial(
+        #[allow(unused_mut)]
+        let mut window_context = WindowContext::initial(
             event_loop,
             self.proxy.clone(),
             self.config.clone(),
             window_options,
         )?;
+
+        #[cfg(target_os = "macos")]
+        window_context
+            .display
+            .window
+            .update_notification_button(self.proxy.clone(), crate::macos::notification::enabled());
 
         self.gl_config = Some(window_context.display.gl_context().config());
         self.windows.insert(window_context.id(), window_context);
@@ -246,7 +257,8 @@ impl Processor {
         let mut config = self.config.clone();
         config = config_overrides.override_config_rc(config);
 
-        let window_context = WindowContext::additional(
+        #[allow(unused_mut)]
+        let mut window_context = WindowContext::additional(
             gl_config,
             event_loop,
             self.proxy.clone(),
@@ -254,6 +266,12 @@ impl Processor {
             options,
             config_overrides,
         )?;
+
+        #[cfg(target_os = "macos")]
+        window_context
+            .display
+            .window
+            .update_notification_button(self.proxy.clone(), crate::macos::notification::enabled());
 
         self.windows.insert(window_context.id(), window_context);
         Ok(())
@@ -336,6 +354,10 @@ impl ApplicationHandler<Event> for Processor {
         #[cfg(target_os = "macos")]
         if matches!(event, WindowEvent::Focused(true)) {
             self.last_focused_window = Some(window_id);
+            let enabled = self.agent_notifications.refresh_enabled();
+            for context in self.windows.values_mut() {
+                context.display.window.update_notification_button(self.proxy.clone(), enabled);
+            }
         }
 
         let window_context = match self.windows.get_mut(&window_id) {
@@ -370,6 +392,37 @@ impl ApplicationHandler<Event> for Processor {
             (EventType::GlobalHotkey(id), _) => {
                 if self.global_hotkey.as_ref().is_some_and(|hotkey| hotkey.is_current(id)) {
                     self.toggle_global_hotkey(event_loop);
+                }
+            },
+            #[cfg(target_os = "macos")]
+            (EventType::AgentNotify(notification), _) => {
+                if notification.kind == "clear"
+                    || self.windows.contains_key(&WindowId::from(notification.window_id))
+                {
+                    self.agent_notifications.update(notification);
+                }
+            },
+            #[cfg(target_os = "macos")]
+            (EventType::ToggleAgentNotifications, _) => {
+                let enabled = !crate::macos::notification::enabled();
+                self.agent_notifications.set_enabled(enabled);
+                for context in self.windows.values_mut() {
+                    context.display.window.update_notification_button(self.proxy.clone(), enabled);
+                }
+            },
+            #[cfg(target_os = "macos")]
+            (EventType::AgentNotificationActivated(session), _) => {
+                if let Some(target) = self.agent_notifications.activate(&session) {
+                    if let Some(context) = self.windows.get(&WindowId::from(target.window_id)) {
+                        let mtm = MainThreadMarker::new()
+                            .expect("notification activation runs on main thread");
+                        NSApplication::sharedApplication(mtm).unhideWithoutActivation();
+                        let window = &context.display.window;
+                        window.set_minimized(false);
+                        window.set_visible(true);
+                        window.focus_window();
+                        crate::macos::notification::activate_pane(target);
+                    }
                 }
             },
             // Process IPC config update.
@@ -528,6 +581,8 @@ impl ApplicationHandler<Event> for Processor {
                 };
 
                 // Unschedule pending events.
+                #[cfg(target_os = "macos")]
+                self.agent_notifications.clear_window((*window_id).into());
                 self.scheduler.unschedule_window(window_context.id());
 
                 // Shutdown if no more terminals are open.
@@ -594,6 +649,8 @@ impl ApplicationHandler<Event> for Processor {
         // Unregister before the native event loop (and its callback target) is torn down.
         #[cfg(target_os = "macos")]
         self.global_hotkey.take();
+        #[cfg(target_os = "macos")]
+        self.agent_notifications.clear_all();
 
         if self.config.debug.print_events {
             info!("Exiting the event loop");
@@ -646,6 +703,12 @@ impl From<Event> for WinitEvent<Event> {
 /// Alacritty events.
 #[derive(Debug, Clone)]
 pub enum EventType {
+    #[cfg(target_os = "macos")]
+    ToggleAgentNotifications,
+    #[cfg(target_os = "macos")]
+    AgentNotify(crate::cli::AgentNotification),
+    #[cfg(target_os = "macos")]
+    AgentNotificationActivated(String),
     #[cfg(target_os = "macos")]
     GlobalHotkey(u32),
     Terminal(TerminalEvent),
@@ -2076,7 +2139,10 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 | EventType::IpcProgramStatus(..)
                 | EventType::Shutdown => (),
                 #[cfg(target_os = "macos")]
-                EventType::GlobalHotkey(_) => (),
+                EventType::GlobalHotkey(_)
+                | EventType::ToggleAgentNotifications
+                | EventType::AgentNotify(_)
+                | EventType::AgentNotificationActivated(_) => (),
                 EventType::Message(_)
                 | EventType::ConfigReload(_)
                 | EventType::CreateWindow(_)

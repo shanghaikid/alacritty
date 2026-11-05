@@ -535,8 +535,15 @@ impl WindowContext {
     #[cfg(unix)]
     pub fn program_status_snapshot(&self, id: WindowId) -> serde_json::Value {
         let terminal = self.terminal.lock();
+        #[cfg(target_os = "macos")]
+        let codex_notifications_enabled = crate::macos::notification::enabled();
+        #[cfg(not(target_os = "macos"))]
+        let codex_notifications_enabled = false;
         serde_json::json!({
             "window_id": u64::from(id),
+            "focused": terminal.is_focused,
+            "codex_notifications_enabled": codex_notifications_enabled,
+            "shell_pid": self.shell_pid,
             "title": self.display.window.displayed_title(),
             "title_updates": self.display.window.status_title_updates,
             "generation": terminal.program_status.generation(),

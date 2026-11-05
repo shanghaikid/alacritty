@@ -115,6 +115,8 @@ pub struct Window {
 
     #[cfg(target_os = "macos")]
     theme_button: Option<crate::macos::theme_button::ThemeButton>,
+    #[cfg(target_os = "macos")]
+    notification_button: Option<crate::macos::notification_button::NotificationButton>,
     window: WinitWindow,
 
     /// Current window title.
@@ -224,6 +226,8 @@ impl Window {
             ime_inhibitor: Default::default(),
             #[cfg(target_os = "macos")]
             theme_button: None,
+            #[cfg(target_os = "macos")]
+            notification_button: None,
         };
         #[cfg(target_os = "macos")]
         let result = {
@@ -467,6 +471,29 @@ impl Window {
                     command.clone(),
                     config.theme(),
                 ));
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn update_notification_button(
+        &mut self,
+        proxy: winit::event_loop::EventLoopProxy<crate::event::Event>,
+        enabled: bool,
+    ) {
+        if let Some(button) = &self.notification_button {
+            button.set_enabled(enabled);
+        } else if let RawWindowHandle::AppKit(handle) = self.raw_window_handle() {
+            // SAFETY: winit owns this AppKit view; this runs on the main thread.
+            let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+            if let Some(window) = view.window() {
+                if !window.styleMask().contains(objc2_app_kit::NSWindowStyleMask::Titled) {
+                    return;
+                }
+                self.notification_button =
+                    Some(crate::macos::notification_button::NotificationButton::new(
+                        window, proxy, enabled,
+                    ));
             }
         }
     }

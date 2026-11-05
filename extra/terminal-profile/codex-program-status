@@ -62,7 +62,7 @@ def transition(payload, saved):
         entry["count"] += 1
         state = "blocked"
     elif event == "PreToolUse" and re.search(
-            r"(^|[._])request_user_input$", payload.get("tool_name", "")):
+            r"(^|[._])request_user_input(_async)?$", payload.get("tool_name", "")):
         pending[tool_key(payload)] = {"kind": "question", "count": 1}
         state = "blocked"
     elif event == "PostToolUse":
@@ -119,6 +119,13 @@ def main():
     if target is None:
         return
     codex_pid, tty = target
+    # The observer owns desktop notification policy. Keep stdout hook-only and
+    # preserve OSC status independently if the optional observer cannot start.
+    try:
+        import codex_notifications
+        codex_notifications.hook(payload, codex_pid, tty)
+    except (ImportError, OSError, ValueError, TypeError, subprocess.SubprocessError):
+        pass
     state_dir = Path(os.environ.get("XDG_RUNTIME_DIR") or
                      os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "codex-program-status"
     state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)

@@ -136,6 +136,8 @@ def install_profile(app, home, config, zsh_dir, codex_dir):
     writer.write(rc, new_rc, 0o600)
     writer.write(home / '.local/bin/codex-program-status',
                  (source / 'codex-program-status').read_bytes(), 0o755)
+    writer.write(home / '.local/bin/codex_notifications.py',
+                 (source / 'codex_notifications.py').read_bytes(), 0o644)
     writer.write(hooks, new_hooks, 0o600)
     return writer
 

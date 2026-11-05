@@ -5,6 +5,7 @@ pub mod clipboard;
 pub mod hotkey;
 pub mod locale;
 pub mod notification;
+pub mod notification_button;
 pub mod path_hint;
 pub mod proc;
 pub mod theme_button;

@@ -267,6 +267,41 @@ pub enum SocketMessage {
 
     /// Inspect program status via the local administrative socket (never the PTY).
     ProgramStatus(IpcGetConfig),
+
+    /// Deliver or withdraw a session notification through the local socket.
+    #[cfg(target_os = "macos")]
+    AgentNotify(AgentNotification),
+
+    /// Inspect delivered agent notifications (identifiers only).
+    #[cfg(target_os = "macos")]
+    AgentNotifications,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Args, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AgentNotification {
+    #[clap(long)]
+    pub session: String,
+    #[clap(long, default_value = "")]
+    #[serde(default)]
+    pub event: String,
+    /// done, goal, question, permission, blocked, limited, or clear.
+    #[clap(long)]
+    pub kind: String,
+    #[clap(long, default_value = "")]
+    #[serde(default)]
+    pub project: String,
+    #[clap(short, long, env = "ALACRITTY_WINDOW_ID")]
+    pub window_id: u64,
+    #[clap(long, default_value = "")]
+    #[serde(default)]
+    pub tmux_socket: String,
+    #[clap(long, default_value = "")]
+    #[serde(default)]
+    pub pane: String,
+    #[clap(long, default_value = "")]
+    #[serde(default)]
+    pub client_tty: String,
 }
 
 /// Migrate the configuration file.
