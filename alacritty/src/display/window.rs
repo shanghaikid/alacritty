@@ -117,6 +117,8 @@ pub struct Window {
     theme_button: Option<crate::macos::theme_button::ThemeButton>,
     #[cfg(target_os = "macos")]
     notification_button: Option<crate::macos::notification_button::NotificationButton>,
+    #[cfg(target_os = "macos")]
+    titlebar: Option<crate::macos::titlebar::Titlebar>,
     window: WinitWindow,
 
     /// Current window title.
@@ -228,10 +230,21 @@ impl Window {
             theme_button: None,
             #[cfg(target_os = "macos")]
             notification_button: None,
+            #[cfg(target_os = "macos")]
+            titlebar: None,
         };
         #[cfg(target_os = "macos")]
         let result = {
             let mut result = result;
+            if matches!(config.window.decorations, Decorations::Transparent | Decorations::Buttonless) {
+                if let RawWindowHandle::AppKit(handle) = result.raw_window_handle() {
+                    // SAFETY: winit owns the view; window creation runs on the main thread.
+                    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+                    if let Some(window) = view.window() {
+                        result.titlebar = crate::macos::titlebar::Titlebar::new(window);
+                    }
+                }
+            }
             result.update_theme_button(&config.window);
             result
         };

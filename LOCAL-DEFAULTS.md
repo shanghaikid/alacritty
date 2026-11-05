@@ -14,6 +14,8 @@ The default Menlo font is supplied by macOS.
 - Merino Light colors, a blinking block cursor, and 12-point text.
 - Window padding of 12 × 24, dynamic padding, and maximized startup.
 - On macOS, a transparent title bar and both Option keys acting as Alt.
+  Double-clicking its background follows the system title-bar action (Zoom,
+  Fill, Minimize, or None), without changing the transparent appearance.
 - On macOS, Cmd+Shift+L globally shows/hides Alacritty without Hammerspoon.
   Summoning restores the last used window, including a minimized window.
 - 100,000 lines of history, selection copied to the clipboard, and the mouse

@@ -9,6 +9,7 @@ pub mod notification_button;
 pub mod path_hint;
 pub mod proc;
 pub mod theme_button;
+pub mod titlebar;
 
 pub fn disable_autofill() {
     unsafe {
