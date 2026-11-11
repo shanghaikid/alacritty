@@ -97,6 +97,7 @@ padding = { x = 10, y = 10 }
 enabled = false
 [mouse]
 hide_when_typing = false
+shift_passthrough = true
 [selection]
 save_to_clipboard = true
 ''')
@@ -220,6 +221,14 @@ save_to_clipboard = true
                 assert state['cursor'] == 'text', state
                 state = at('up', 7, 2)
                 assert state['cursor'] == 'arrow', state
+                request('mods', mods=1 << 17)
+                state = at('move', 1, 2, 1 << 17)
+                assert state['cursor'] == 'text', state
+                at('down', 1, 2, 1 << 17)
+                state = at('up', 1, 2, 1 << 17)
+                assert state['cursor'] == 'text', state
+                state = request('mods', mods=0)
+                assert state['cursor'] == 'arrow', state
                 request('mods', mods=1 << 20)
                 state = at('move', 13, 0, 1 << 20)
                 assert state['cursor'] == 'text', state
@@ -229,7 +238,7 @@ save_to_clipboard = true
                 request('mods', mods=0)
                 state = at('move', 13, 0)
                 assert state['cursor'] == 'arrow', state
-                print('PASS: tmux tab arrow, click switches window, drag I-beam, release arrow, Cmd overrides', flush=True)
+                print('PASS: tmux tab arrow, click switches window, drag/Shift I-beam, release arrow, Cmd overrides', flush=True)
                 print('PASS: native text cursor, drag selection, word double-click, distant click reset, Option rectangle, link cursor reset', flush=True)
             except BaseException:
                 print((root / 'app.log').read_text()[-6000:])

@@ -237,8 +237,10 @@ Ordinary terminal text uses an I-beam pointer. Mouse-aware programs retain an
 arrow pointer for their UI, including tmux's top tab bar; holding a native
 selection modifier switches to the selection pointer.
 Left-button drags use an I-beam even when tmux handles the selection; releasing
-the button restores its arrow. On macOS, Option-drag selects a rectangle with
-a crosshair pointer; Control-drag remains
+the button restores its arrow. Holding Shift also shows an I-beam, including
+when `mouse.shift_passthrough` forwards selection gestures to tmux. Releasing
+Shift restores the pointer for the current context. On macOS, Option-drag
+selects a rectangle with a crosshair pointer; Control-drag remains
 available. When tmux or a program captures the mouse, hold Cmd+Option (or
 Shift+Option unless `mouse.shift_passthrough` is enabled) for native rectangular
 selection. Link hover stops showing a hand while text is selected. Dragging to

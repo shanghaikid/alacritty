@@ -96,7 +96,8 @@ pub(crate) fn mouse_cursor_icon(
     let selecting = !mouse_mode || mouse_reporting_override(modifiers, shift_passthrough);
     if selecting && block_selection(modifiers) {
         CursorIcon::Crosshair
-    } else if dragging {
+    } else if dragging || modifiers.shift_key() {
+        // Shift can extend a selection inside tmux even when its mouse events are forwarded.
         CursorIcon::Text
     } else if selecting && hint_highlighted {
         CursorIcon::Pointer
@@ -1831,6 +1832,16 @@ mod tests {
             mouse_cursor_icon(ModifiersState::empty(), true, false, true, true),
             CursorIcon::Text
         );
+        for passthrough in [false, true] {
+            assert_eq!(
+                mouse_cursor_icon(ModifiersState::SHIFT, true, passthrough, false, false),
+                CursorIcon::Text
+            );
+            assert_eq!(
+                mouse_cursor_icon(ModifiersState::SHIFT, false, passthrough, true, false),
+                CursorIcon::Text
+            );
+        }
         let mut mouse = Mouse {
             left_button_state: ElementState::Pressed,
             click_dragged: true,
@@ -1871,7 +1882,7 @@ mod tests {
                     false,
                     false
                 ),
-                CursorIcon::Default
+                CursorIcon::Text
             );
             assert_eq!(
                 mouse_cursor_icon(
