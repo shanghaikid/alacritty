@@ -491,6 +491,7 @@ mod tests {
         assert_eq!(value["font"]["size"].as_float(), Some(12.));
         assert_eq!(config.cursor.blink_interval(), 500);
         assert_eq!(config.cursor.blink_timeout(), std::time::Duration::ZERO);
+        assert_eq!(config.cursor.style.blinking_override(), Some(true));
         #[cfg(target_os = "macos")]
         {
             assert_eq!(config.font.normal().family, "Menlo");

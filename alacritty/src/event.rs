@@ -715,6 +715,7 @@ pub enum EventType {
     ConfigReload(PathBuf),
     Message(Message),
     Scroll(Scroll),
+    SelectionScroll(i32),
     CreateWindow(WindowOptions),
     #[cfg(unix)]
     IpcConfig(IpcConfig),
@@ -1458,7 +1459,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     /// Expand the selection to the current mouse cursor position.
     #[inline]
     fn expand_selection(&mut self) {
-        let control = self.modifiers().state().control_key();
+        let control = input::block_selection(self.modifiers().state());
         let selection_type = match self.mouse().click_state {
             ClickState::None => return,
             _ if control => SelectionType::Block,
@@ -1953,6 +1954,8 @@ pub struct Mouse {
     pub right_button_state: ElementState,
     pub last_click_timestamp: Instant,
     pub last_click_button: MouseButton,
+    pub last_click_position: (usize, usize),
+    pub click_dragged: bool,
     pub click_state: ClickState,
     pub accumulated_scroll: AccumulatedScroll,
     pub cell_side: Side,
@@ -1968,6 +1971,8 @@ impl Default for Mouse {
         Mouse {
             last_click_timestamp: Instant::now(),
             last_click_button: MouseButton::Left,
+            last_click_position: (0, 0),
+            click_dragged: false,
             left_button_state: ElementState::Released,
             middle_button_state: ElementState::Released,
             right_button_state: ElementState::Released,
@@ -1984,6 +1989,11 @@ impl Default for Mouse {
 }
 
 impl Mouse {
+    /// A left-button drag, including selections handled by a mouse-aware application.
+    pub fn is_left_drag(&self) -> bool {
+        self.left_button_state == ElementState::Pressed && self.click_dragged
+    }
+
     /// Convert mouse pixel coordinates to viewport point.
     ///
     /// If the coordinates are outside of the terminal grid, like positions inside the padding, the
@@ -2026,6 +2036,13 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                 EventType::ProgramStatus => (),
                 EventType::SearchNext => self.ctx.goto_match(None),
                 EventType::Scroll(scroll) => self.ctx.scroll(scroll),
+                EventType::SelectionScroll(delta) => {
+                    if !self.scroll_selection(delta) {
+                        let timer_id =
+                            TimerId::new(Topic::SelectionScrolling, self.ctx.window().id());
+                        self.ctx.scheduler.unschedule(timer_id);
+                    }
+                },
                 EventType::BlinkCursor => {
                     // Only change state when timeout isn't reached, since we could get
                     // BlinkCursor and BlinkCursorTimeout events at the same time.
@@ -2206,6 +2223,16 @@ impl input::Processor<EventProxy, ActionContext<'_, Notifier, EventProxy>> {
                         // Reset the urgency hint when gaining focus.
                         if is_focused {
                             self.ctx.window().set_urgent(false);
+                        } else {
+                            // A button release can be delivered to another application. Abandon
+                            // the gesture and autoscroll so refocusing cannot resume a stale drag.
+                            self.ctx.mouse.left_button_state = ElementState::Released;
+                            self.ctx.mouse.middle_button_state = ElementState::Released;
+                            self.ctx.mouse.right_button_state = ElementState::Released;
+                            self.ctx.mouse.click_state = ClickState::None;
+                            let timer_id =
+                                TimerId::new(Topic::SelectionScrolling, self.ctx.window().id());
+                            self.ctx.scheduler.unschedule(timer_id);
                         }
 
                         self.ctx.update_cursor_blinking();

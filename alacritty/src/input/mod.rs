@@ -6,7 +6,7 @@
 //! determine what to do when a non-modifier key is pressed.
 
 use std::borrow::Cow;
-use std::cmp::{Ordering, max, min};
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fmt::Debug;
@@ -58,8 +58,8 @@ pub const FONT_SIZE_STEP: f32 = 1.;
 /// Interval for mouse scrolling during selection outside of the boundaries.
 const SELECTION_SCROLLING_INTERVAL: Duration = Duration::from_millis(15);
 
-/// Minimum number of pixels at the bottom/top where selection scrolling is performed.
-const MIN_SELECTION_SCROLLING_HEIGHT: f64 = 5.;
+/// Buffer at the window edge, including fullscreen windows where the pointer cannot leave.
+const SELECTION_SCROLLING_EDGE: i32 = 1;
 
 /// Number of pixels for increasing the selection scrolling speed factor by one.
 const SELECTION_SCROLLING_STEP: f64 = 20.;
@@ -68,7 +68,44 @@ const SELECTION_SCROLLING_STEP: f64 = 20.;
 const MAX_TAP_DISTANCE: f64 = 20.;
 
 /// Threshold used for double_click/triple_click.
-const CLICK_THRESHOLD: Duration = Duration::from_millis(400);
+fn click_threshold() -> Duration {
+    #[cfg(target_os = "macos")]
+    if let Ok(interval) = Duration::try_from_secs_f64(objc2_app_kit::NSEvent::doubleClickInterval())
+    {
+        if !interval.is_zero() {
+            return interval;
+        }
+    }
+
+    Duration::from_millis(400)
+}
+
+/// Option-drag is the native macOS rectangle gesture; retain Control-drag compatibility.
+pub(crate) fn block_selection(modifiers: ModifiersState) -> bool {
+    modifiers.control_key() || (cfg!(target_os = "macos") && modifiers.alt_key())
+}
+
+/// Keep pointer feedback consistent between input handling and asynchronous hint updates.
+pub(crate) fn mouse_cursor_icon(
+    modifiers: ModifiersState,
+    mouse_mode: bool,
+    shift_passthrough: bool,
+    hint_highlighted: bool,
+    dragging: bool,
+) -> CursorIcon {
+    let selecting = !mouse_mode || mouse_reporting_override(modifiers, shift_passthrough);
+    if selecting && block_selection(modifiers) {
+        CursorIcon::Crosshair
+    } else if dragging {
+        CursorIcon::Text
+    } else if selecting && hint_highlighted {
+        CursorIcon::Pointer
+    } else if !selecting {
+        CursorIcon::Default
+    } else {
+        CursorIcon::Text
+    }
+}
 
 /// Modifiers which keep mouse clicks and selection in Alacritty instead of the PTY.
 pub(crate) fn mouse_reporting_override(modifiers: ModifiersState, shift_passthrough: bool) -> bool {
@@ -483,18 +520,33 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         Self { ctx, _phantom: Default::default() }
     }
 
+    /// Whether the current button gesture belongs to terminal selection rather than the PTY.
+    fn native_selection(&mut self) -> bool {
+        (self.ctx.mouse().left_button_state == ElementState::Pressed
+            || self.ctx.mouse().right_button_state == ElementState::Pressed)
+            && self.ctx.mouse().click_state != ClickState::None
+            && (mouse_reporting_override(
+                self.ctx.modifiers().state(),
+                self.ctx.config().mouse.shift_passthrough,
+            ) || !self.ctx.mouse_mode())
+    }
+
+    /// Revalidate queued autoscroll ticks after button, modifier, focus, or mode changes.
+    pub fn scroll_selection(&mut self, delta: i32) -> bool {
+        if !self.native_selection() || self.ctx.selection_is_empty() {
+            return false;
+        }
+        self.ctx.scroll(Scroll::Delta(delta));
+        true
+    }
+
     #[inline]
     pub fn mouse_moved(&mut self, position: PhysicalPosition<f64>) {
         let size_info = self.ctx.size_info();
 
-        let (x, y) = position.into();
+        let (x, y): (i32, i32) = position.into();
 
         let lmb_pressed = self.ctx.mouse().left_button_state == ElementState::Pressed;
-        let rmb_pressed = self.ctx.mouse().right_button_state == ElementState::Pressed;
-        if !self.ctx.selection_is_empty() && (lmb_pressed || rmb_pressed) {
-            self.update_selection_scrolling(y);
-        }
-
         let display_offset = self.ctx.terminal().grid().display_offset();
         let old_point = self.ctx.mouse().point(&size_info, display_offset);
 
@@ -508,6 +560,18 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
         let point = self.ctx.mouse().point(&size_info, display_offset);
         let cell_changed = old_point != point;
+        let native_selection = self.native_selection();
+
+        // Application-owned drags (including tmux copy mode) also select text. Keep ordinary
+        // clicks on its tab bar as arrows, and switch to an I-beam only once dragging begins.
+        if lmb_pressed && cell_changed {
+            self.ctx.mouse_mut().click_dragged = true;
+        }
+
+        // Edge motion can stay in the same cell (especially with large padding).
+        if native_selection && !self.ctx.selection_is_empty() {
+            self.update_selection_scrolling(position.y as i32);
+        }
 
         // If the mouse hasn't changed cells, do nothing.
         if !cell_changed
@@ -520,23 +584,34 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         self.ctx.mouse_mut().inside_text_area = inside_text_area;
         self.ctx.mouse_mut().cell_side = cell_side;
 
-        // Update mouse state and check for URL change.
-        let mouse_state = self.cursor_state();
-        self.ctx.window().set_mouse_cursor(mouse_state);
-
         // Prompt hint highlight update.
         self.ctx.mouse_mut().hint_highlight_dirty = true;
 
         // Don't launch URLs if mouse has moved.
         self.ctx.mouse_mut().block_hint_launcher = true;
 
-        if (lmb_pressed || rmb_pressed)
-            && (mouse_reporting_override(
-                self.ctx.modifiers().state(),
-                self.ctx.config().mouse.shift_passthrough,
-            ) || !self.ctx.mouse_mode())
-        {
+        if native_selection {
+            // Option/Control can change a cell drag's shape. Shift continues the existing
+            // anchor's selection type, including a rectangle whose modifier was released.
+            let modifiers = self.ctx.modifiers().state();
+            if !modifiers.shift_key() {
+                let rectangle = block_selection(modifiers);
+                if let Some(selection) = self.ctx.terminal_mut().selection.as_mut() {
+                    if matches!(selection.ty, SelectionType::Simple | SelectionType::Block) {
+                        selection.ty =
+                            if rectangle { SelectionType::Block } else { SelectionType::Simple };
+                    }
+                }
+            }
             self.ctx.update_selection(point, cell_side);
+            // A drag cannot be continued as a double click, even after returning to its origin.
+            if lmb_pressed && (cell_changed || !self.ctx.selection_is_empty()) {
+                self.ctx.mouse_mut().click_dragged = true;
+            }
+            // Check after updating the selection so the first movement can start scrolling.
+            if !self.ctx.selection_is_empty() {
+                self.update_selection_scrolling(position.y as i32);
+            }
         } else if cell_changed
             && !mouse_reporting_override(
                 self.ctx.modifiers().state(),
@@ -554,24 +629,22 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
                 self.mouse_report(35, ElementState::Pressed);
             }
         }
+
+        // Resolve the pointer after selection updates so a link cannot leave a hand cursor behind.
+        let mouse_state = self.cursor_state();
+        self.ctx.window().set_mouse_cursor(mouse_state);
     }
 
     /// Check which side of a cell an X coordinate lies on.
     fn cell_side(&self, x: usize) -> Side {
         let size_info = self.ctx.size_info();
 
-        let cell_x =
-            x.saturating_sub(size_info.padding_x() as usize) % size_info.cell_width() as usize;
-        let half_cell_width = (size_info.cell_width() / 2.0) as usize;
+        let cell_width = size_info.cell_width() as usize;
+        let grid_x = x.saturating_sub(size_info.padding_x() as usize);
+        // Ghostty includes a cell once the pointer crosses 60% of its width.
+        let threshold = (cell_width as f64 * 0.6).round() as usize;
 
-        let additional_padding =
-            (size_info.width() - size_info.padding_x() * 2.) % size_info.cell_width();
-        let end_of_grid = size_info.width() - size_info.padding_x() - additional_padding;
-
-        if cell_x > half_cell_width
-            // Edge case when mouse leaves the window.
-            || x as f32 >= end_of_grid
-        {
+        if grid_x >= size_info.columns() * cell_width || grid_x % cell_width >= threshold {
             Side::Right
         } else {
             Side::Left
@@ -662,6 +735,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         ) && self.ctx.mouse_mode()
         {
             self.ctx.mouse_mut().click_state = ClickState::None;
+            self.ctx.mouse_mut().click_dragged = false;
 
             let code = match button {
                 MouseButton::Left => 0,
@@ -677,18 +751,31 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             let now = Instant::now();
             let elapsed = now - self.ctx.mouse().last_click_timestamp;
             self.ctx.mouse_mut().last_click_timestamp = now;
+            let mouse = self.ctx.mouse();
+            let distance = (mouse.x.abs_diff(mouse.last_click_position.0) as f64)
+                .hypot(mouse.y.abs_diff(mouse.last_click_position.1) as f64);
+            let repeat = elapsed < click_threshold()
+                && distance <= self.ctx.size_info().cell_width() as f64
+                && !mouse.click_dragged;
+            let rectangle = block_selection(self.ctx.modifiers().state());
 
             // Update multi-click state.
             self.ctx.mouse_mut().click_state = match self.ctx.mouse().click_state {
                 // Reset click state if button has changed.
-                _ if button != self.ctx.mouse().last_click_button => {
+                _ if button != self.ctx.mouse().last_click_button || rectangle => {
                     self.ctx.mouse_mut().last_click_button = button;
                     ClickState::Click
                 },
-                ClickState::Click if elapsed < CLICK_THRESHOLD => ClickState::DoubleClick,
-                ClickState::DoubleClick if elapsed < CLICK_THRESHOLD => ClickState::TripleClick,
+                ClickState::Click if repeat => ClickState::DoubleClick,
+                ClickState::DoubleClick | ClickState::TripleClick if repeat => {
+                    ClickState::TripleClick
+                },
                 _ => ClickState::Click,
             };
+            if self.ctx.mouse().click_state == ClickState::Click {
+                self.ctx.mouse_mut().last_click_position = (self.ctx.mouse().x, self.ctx.mouse().y);
+            }
+            self.ctx.mouse_mut().click_dragged = false;
 
             // Load mouse point, treating message bar and padding as the closest cell.
             let display_offset = self.ctx.terminal().grid().display_offset();
@@ -703,7 +790,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     /// Handle left click selection and vi mode cursor movement.
     fn on_left_click(&mut self, point: Point) {
         let side = self.ctx.mouse().cell_side;
-        let control = self.ctx.modifiers().state().control_key();
+        let rectangle = block_selection(self.ctx.modifiers().state());
 
         // Shift-click moves only the active endpoint, including when the first
         // click created an empty anchor. Keep the original selection type and
@@ -711,9 +798,10 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         if self.ctx.modifiers().state().shift_key() && self.ctx.terminal().selection.is_some() {
             self.ctx.mouse_mut().block_hint_launcher = true;
             self.ctx.mouse_mut().click_state = ClickState::Click;
+            self.ctx.mouse_mut().click_dragged = true;
             self.ctx.update_selection(point, side);
         } else {
-            self.start_click_selection(point, side, control);
+            self.start_click_selection(point, side, rectangle);
         }
 
         // Move vi mode cursor to mouse click position.
@@ -724,26 +812,27 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     /// Start a new selection for an unmodified click or a click without an anchor.
-    fn start_click_selection(&mut self, point: Point, side: Side, control: bool) {
+    fn start_click_selection(&mut self, point: Point, side: Side, rectangle: bool) {
         match self.ctx.mouse().click_state {
             ClickState::Click => {
                 // Don't launch URLs if this click cleared the selection.
-                self.ctx.mouse_mut().block_hint_launcher = !self.ctx.selection_is_empty();
+                self.ctx.mouse_mut().block_hint_launcher =
+                    rectangle || !self.ctx.selection_is_empty();
 
                 self.ctx.clear_selection();
 
                 // Start new empty selection.
-                if control {
+                if rectangle {
                     self.ctx.start_selection(SelectionType::Block, point, side);
                 } else {
                     self.ctx.start_selection(SelectionType::Simple, point, side);
                 }
             },
-            ClickState::DoubleClick if !control => {
+            ClickState::DoubleClick if !rectangle => {
                 self.ctx.mouse_mut().block_hint_launcher = true;
                 self.ctx.start_selection(SelectionType::Semantic, point, side);
             },
-            ClickState::TripleClick if !control => {
+            ClickState::TripleClick if !rectangle => {
                 self.ctx.mouse_mut().block_hint_launcher = true;
                 self.ctx.start_selection(SelectionType::Lines, point, side);
             },
@@ -752,6 +841,13 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
     }
 
     fn on_mouse_release(&mut self, button: MouseButton) {
+        // The override modifier may have been released before the button. Always finish a
+        // native drag's timer before handing this release back to the application.
+        if self.ctx.mouse().click_state != ClickState::None {
+            let timer_id = TimerId::new(Topic::SelectionScrolling, self.ctx.window().id());
+            self.ctx.scheduler_mut().unschedule(timer_id);
+        }
+
         if !mouse_reporting_override(
             self.ctx.modifiers().state(),
             self.ctx.config().mouse.shift_passthrough,
@@ -774,9 +870,6 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             self.ctx.trigger_hint(hint);
         }
         self.ctx.display().highlighted_hint = hint;
-
-        let timer_id = TimerId::new(Topic::SelectionScrolling, self.ctx.window().id());
-        self.ctx.scheduler_mut().unschedule(timer_id);
 
         if let MouseButton::Left | MouseButton::Right = button {
             // Copy selection on release, to prevent flooding the display server.
@@ -1055,6 +1148,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         }
 
         // Skip normal mouse events if the message bar has been clicked.
+        self.ctx.mouse_mut().hint_highlight_dirty = true;
         if self.message_bar_cursor_state() == Some(CursorIcon::Pointer)
             && state == ElementState::Pressed
         {
@@ -1071,13 +1165,7 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
             let new_icon = match current_lines.cmp(&new_lines) {
                 Ordering::Less => CursorIcon::Default,
                 Ordering::Equal => CursorIcon::Pointer,
-                Ordering::Greater => {
-                    if self.ctx.mouse_mode() {
-                        CursorIcon::Default
-                    } else {
-                        CursorIcon::Text
-                    }
-                },
+                Ordering::Greater => self.cursor_state(),
             };
 
             self.ctx.window().set_mouse_cursor(new_icon);
@@ -1166,16 +1254,16 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
 
         if let Some(mouse_state) = self.message_bar_cursor_state() {
             mouse_state
-        } else if self.ctx.display().highlighted_hint.as_ref().is_some_and(hint_highlighted) {
-            CursorIcon::Pointer
-        } else if !mouse_reporting_override(
-            self.ctx.modifiers().state(),
-            self.ctx.config().mouse.shift_passthrough,
-        ) && self.ctx.mouse_mode()
-        {
-            CursorIcon::Default
         } else {
-            CursorIcon::Text
+            let highlighted = self.ctx.selection_is_empty()
+                && self.ctx.display().highlighted_hint.as_ref().is_some_and(hint_highlighted);
+            mouse_cursor_icon(
+                self.ctx.modifiers().state(),
+                self.ctx.mouse_mode(),
+                self.ctx.config().mouse.shift_passthrough,
+                highlighted,
+                self.ctx.mouse().is_left_drag(),
+            )
         }
     }
 
@@ -1187,13 +1275,10 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         let scheduler = self.ctx.scheduler_mut();
 
         // Scale constants by DPI.
-        let min_height = (MIN_SELECTION_SCROLLING_HEIGHT * scale_factor) as i32;
-        let step = (SELECTION_SCROLLING_STEP * scale_factor) as i32;
-
-        // Compute the height of the scrolling areas.
-        let end_top = max(min_height, size.padding_y() as i32);
-        let text_area_bottom = size.padding_y() + size.screen_lines() as f32 * size.cell_height();
-        let start_bottom = min(size.height() as i32 - min_height, text_area_bottom as i32);
+        let step = ((SELECTION_SCROLLING_STEP * scale_factor) as i32).max(1);
+        // Padding belongs to the window: scrolling starts at its edge, not in the first text row.
+        let end_top = SELECTION_SCROLLING_EDGE;
+        let start_bottom = size.height() as i32 - SELECTION_SCROLLING_EDGE;
 
         // Get distance from closest window boundary.
         let delta = if mouse_y < end_top {
@@ -1206,17 +1291,17 @@ impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
         };
 
         // Scale number of lines scrolled based on distance to boundary.
-        let event = Event::new(EventType::Scroll(Scroll::Delta(delta / step)), Some(window_id));
+        let event = Event::new(EventType::SelectionScroll(delta / step), Some(window_id));
 
         // Schedule event.
         let timer_id = TimerId::new(Topic::SelectionScrolling, window_id);
-        scheduler.unschedule(timer_id);
-        scheduler.schedule(event, SELECTION_SCROLLING_INTERVAL, true, timer_id);
+        scheduler.schedule_or_update(event, SELECTION_SCROLLING_INTERVAL, true, timer_id);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::ActionContext as _;
     use super::*;
 
     use winit::event::{DeviceId, Event as WinitEvent, WindowEvent};
@@ -1616,6 +1701,255 @@ mod tests {
         );
     }
 
+    #[test]
+    fn repeated_clicks_require_nearby_positions_and_no_previous_drag() {
+        let cfg = UiConfig::default();
+        let size = SizeInfo::new(200., 100., 10., 20., 0., 0., false);
+        let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+        let mut mouse = Mouse::default();
+        let mut clipboard = Clipboard::new_nop();
+        let mut messages = MessageBuffer::default();
+        let mut inline_search = InlineSearchState::default();
+        let mut processor = Processor::new(ActionContext {
+            terminal: &mut terminal,
+            size_info: &size,
+            mouse: &mut mouse,
+            clipboard: &mut clipboard,
+            message_buffer: &mut messages,
+            modifiers: Default::default(),
+            config: &cfg,
+            inline_search_state: &mut inline_search,
+            pty_output: Default::default(),
+        });
+
+        for (x, y, dragged, expected) in [
+            (20, 20, false, ClickState::Click),
+            (26, 28, false, ClickState::DoubleClick), // One cell-width Euclidean distance.
+            (29, 29, false, ClickState::Click),       // Still measured from the first press.
+            (29, 29, false, ClickState::DoubleClick),
+            (29, 29, false, ClickState::TripleClick),
+            (29, 29, false, ClickState::TripleClick),
+            (29, 29, true, ClickState::Click), // Dragged away and returned to the press.
+            (29, 50, false, ClickState::Click), // A different row is a new selection.
+        ] {
+            processor.ctx.mouse.x = x;
+            processor.ctx.mouse.y = y;
+            processor.ctx.mouse.click_dragged = dragged;
+            processor.on_mouse_press(MouseButton::Left);
+            assert_eq!(processor.ctx.mouse.click_state, expected);
+        }
+
+        // The macOS Option gesture must start a rectangle, even immediately after a click.
+        #[cfg(target_os = "macos")]
+        {
+            processor.ctx.modifiers = ModifiersState::ALT.into();
+            for _ in 0..3 {
+                processor.on_mouse_press(MouseButton::Left);
+                assert_eq!(
+                    processor.ctx.terminal.selection.as_ref().unwrap().ty,
+                    SelectionType::Block
+                );
+                assert!(processor.ctx.mouse.block_hint_launcher);
+            }
+        }
+    }
+
+    #[test]
+    fn selection_threshold_tracks_sixty_percent_and_clamps_padding() {
+        for scale in [1., 2.] {
+            let cfg = UiConfig::default();
+            let size = SizeInfo::new(
+                220. * scale,
+                120. * scale,
+                10. * scale,
+                20. * scale,
+                10. * scale,
+                20. * scale,
+                false,
+            );
+            let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+            let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+            parser.advance(&mut terminal, b"ABCDE");
+            let mut mouse = Mouse { y: (20. * scale) as usize, ..Mouse::default() };
+            let mut clipboard = Clipboard::new_nop();
+            let mut messages = MessageBuffer::default();
+            let mut inline_search = InlineSearchState::default();
+            let mut processor = Processor::new(ActionContext {
+                terminal: &mut terminal,
+                size_info: &size,
+                mouse: &mut mouse,
+                clipboard: &mut clipboard,
+                message_buffer: &mut messages,
+                modifiers: Default::default(),
+                config: &cfg,
+                inline_search_state: &mut inline_search,
+                pty_output: Default::default(),
+            });
+
+            assert_eq!(processor.cell_side((9. * scale) as usize), Side::Left);
+            assert_eq!(processor.cell_side((211. * scale) as usize), Side::Right);
+            for (start, end, expected) in
+                [(12., 15., None), (12., 16., Some("A")), (18., 16., None), (18., 15., Some("A"))]
+            {
+                processor.ctx.mouse.x = (start * scale) as usize;
+                processor.ctx.mouse.cell_side = processor.cell_side(processor.ctx.mouse.x);
+                processor.ctx.mouse.click_state = ClickState::Click;
+                let point = processor.ctx.mouse.point(&size, 0);
+                processor.on_left_click(point);
+                processor.ctx.mouse.x = (end * scale) as usize;
+                let point = processor.ctx.mouse.point(&size, 0);
+                processor.ctx.update_selection(point, processor.cell_side(processor.ctx.mouse.x));
+                assert_eq!(processor.ctx.terminal.selection_to_string().as_deref(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn selection_pointer_matches_modifiers_and_application_capture() {
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::empty(), false, false, false, false),
+            CursorIcon::Text
+        );
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::empty(), false, false, true, false),
+            CursorIcon::Pointer
+        );
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::CONTROL, false, false, true, false),
+            CursorIcon::Crosshair
+        );
+        // Mouse-aware UI (including tmux's tab bar) owns ordinary clicks.
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::empty(), true, false, false, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::empty(), true, false, true, false),
+            CursorIcon::Default
+        );
+        assert_eq!(
+            mouse_cursor_icon(ModifiersState::empty(), true, false, true, true),
+            CursorIcon::Text
+        );
+        let mut mouse = Mouse {
+            left_button_state: ElementState::Pressed,
+            click_dragged: true,
+            ..Mouse::default()
+        };
+        assert!(mouse.is_left_drag());
+        mouse.left_button_state = ElementState::Released;
+        assert!(!mouse.is_left_drag());
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(
+                mouse_cursor_icon(ModifiersState::SUPER, true, false, false, false),
+                CursorIcon::Text
+            );
+            assert_eq!(
+                mouse_cursor_icon(ModifiersState::ALT, false, false, true, false),
+                CursorIcon::Crosshair
+            );
+            assert_eq!(
+                mouse_cursor_icon(ModifiersState::ALT, true, false, false, false),
+                CursorIcon::Default
+            );
+            assert_eq!(
+                mouse_cursor_icon(
+                    ModifiersState::SHIFT | ModifiersState::ALT,
+                    true,
+                    false,
+                    false,
+                    false
+                ),
+                CursorIcon::Crosshair
+            );
+            assert_eq!(
+                mouse_cursor_icon(
+                    ModifiersState::SHIFT | ModifiersState::ALT,
+                    true,
+                    true,
+                    false,
+                    false
+                ),
+                CursorIcon::Default
+            );
+            assert_eq!(
+                mouse_cursor_icon(
+                    ModifiersState::SUPER | ModifiersState::ALT,
+                    true,
+                    true,
+                    false,
+                    false
+                ),
+                CursorIcon::Crosshair
+            );
+        }
+    }
+
+    #[test]
+    fn queued_selection_scroll_requires_a_live_native_gesture() {
+        let mut cfg = UiConfig::default();
+        cfg.mouse.shift_passthrough = true;
+        let size = SizeInfo::new(120., 60., 6., 12., 0., 0., false);
+        let mut terminal = Term::new(cfg.term_options(), &size, MockEventProxy);
+        let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+        parser.advance(&mut terminal, "history\r\n".repeat(100).as_bytes());
+        let mut mouse = Mouse::default();
+        let mut clipboard = Clipboard::new_nop();
+        let mut messages = MessageBuffer::default();
+        let mut inline_search = InlineSearchState::default();
+        let mut processor = Processor::new(ActionContext {
+            terminal: &mut terminal,
+            size_info: &size,
+            mouse: &mut mouse,
+            clipboard: &mut clipboard,
+            message_buffer: &mut messages,
+            modifiers: Default::default(),
+            config: &cfg,
+            inline_search_state: &mut inline_search,
+            pty_output: Default::default(),
+        });
+
+        for (pressed, owned, reporting, modifiers, selected, allowed) in [
+            (true, true, false, ModifiersState::empty(), true, true),
+            (false, true, false, ModifiersState::empty(), true, false),
+            (true, false, false, ModifiersState::empty(), true, false),
+            (true, true, false, ModifiersState::empty(), false, false),
+            (true, true, true, ModifiersState::empty(), true, false),
+            (true, true, true, ModifiersState::SHIFT, true, false),
+            (true, false, true, ModifiersState::SUPER, true, false),
+        ] {
+            processor.ctx.terminal.scroll_display(Scroll::Bottom);
+            processor.ctx.terminal.selection = None;
+            if selected {
+                use alacritty_terminal::index::Line;
+                processor.ctx.start_selection(
+                    SelectionType::Simple,
+                    Point::new(Line(0), Column(0)),
+                    Side::Left,
+                );
+                processor.ctx.update_selection(Point::new(Line(0), Column(2)), Side::Right);
+            }
+            parser.advance(
+                processor.ctx.terminal,
+                if reporting { b"\x1b[?1000h" } else { b"\x1b[?1000l" },
+            );
+            processor.ctx.mouse.left_button_state =
+                if pressed { ElementState::Pressed } else { ElementState::Released };
+            processor.ctx.mouse.click_state =
+                if owned { ClickState::Click } else { ClickState::None };
+            processor.ctx.modifiers = modifiers.into();
+            assert_eq!(processor.scroll_selection(1), allowed);
+            assert_eq!(processor.ctx.terminal.grid().display_offset(), usize::from(allowed));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            processor.ctx.mouse.click_state = ClickState::Click;
+            assert!(processor.scroll_selection(1), "Command can override application capture");
+        }
+    }
+
     macro_rules! test_clickstate {
         {
             name: $name:ident,
@@ -1779,7 +2113,7 @@ mod tests {
             window_id: WindowId::dummy(),
         },
         end_state: ClickState::Click,
-        input_delay: CLICK_THRESHOLD,
+        input_delay: click_threshold(),
     }
 
     test_clickstate! {
@@ -1811,7 +2145,7 @@ mod tests {
             window_id: WindowId::dummy(),
         },
         end_state: ClickState::Click,
-        input_delay: CLICK_THRESHOLD,
+        input_delay: click_threshold(),
     }
 
     test_clickstate! {

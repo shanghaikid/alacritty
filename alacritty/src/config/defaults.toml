@@ -78,7 +78,7 @@ cyan = "#3192aa"
 white = "#8c959f"
 
 [cursor]
-style = { shape = "Block", blinking = "On" }
+style = { shape = "Block", blinking = "Always" }
 blink_interval = 500
 blink_timeout = 0
 

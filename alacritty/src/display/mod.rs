@@ -51,6 +51,7 @@ use crate::display::hint::{HintMatch, HintState};
 use crate::display::meter::Meter;
 use crate::display::window::Window;
 use crate::event::{Event, EventType, Mouse, SearchState};
+use crate::input::{block_selection, mouse_cursor_icon, mouse_reporting_override};
 use crate::message_bar::{MessageBuffer, MessageType};
 use crate::renderer::rects::{RenderLine, RenderLines, RenderRect};
 use crate::renderer::{self, GlyphCache, Renderer, platform};
@@ -1083,14 +1084,31 @@ impl Display {
             self.damage_tracker.frame().mark_fully_damaged();
         }
 
+        let mouse_mode =
+            term.mode().intersects(TermMode::MOUSE_MODE) && !term.mode().contains(TermMode::VI);
+        let rectangle = block_selection(modifiers)
+            && (!mouse_mode || mouse_reporting_override(modifiers, config.mouse.shift_passthrough));
+
         // Abort if mouse highlighting conditions are not met.
         if !self.window.mouse_visible()
             || !mouse.inside_text_area
             || !term.selection.as_ref().is_none_or(Selection::is_empty)
+            || rectangle
+            || mouse.is_left_drag()
         {
             if self.highlighted_hint.take().is_some() {
+                self.hint_mouse_point = None;
                 self.damage_tracker.frame().mark_fully_damaged();
                 dirty = true;
+            }
+            if self.window.mouse_visible() && mouse.inside_text_area {
+                self.window.set_mouse_cursor(mouse_cursor_icon(
+                    modifiers,
+                    mouse_mode,
+                    config.mouse.shift_passthrough,
+                    false,
+                    mouse.is_left_drag(),
+                ));
             }
             return dirty;
         }
@@ -1105,15 +1123,16 @@ impl Display {
             // highlighted hint could be disrupted by the old preview.
             dirty = self.hint_mouse_point.is_some_and(|p| p.line != point.line);
             self.hint_mouse_point = Some(point);
-            self.window.set_mouse_cursor(CursorIcon::Pointer);
         } else if self.highlighted_hint.is_some() {
             self.hint_mouse_point = None;
-            if term.mode().intersects(TermMode::MOUSE_MODE) && !term.mode().contains(TermMode::VI) {
-                self.window.set_mouse_cursor(CursorIcon::Default);
-            } else {
-                self.window.set_mouse_cursor(CursorIcon::Text);
-            }
         }
+        self.window.set_mouse_cursor(mouse_cursor_icon(
+            modifiers,
+            mouse_mode,
+            config.mouse.shift_passthrough,
+            highlighted_hint.is_some(),
+            mouse.is_left_drag(),
+        ));
 
         let mouse_highlight_dirty = self.highlighted_hint != highlighted_hint;
         dirty |= mouse_highlight_dirty;

@@ -90,6 +90,23 @@ impl Scheduler {
         self.timers.insert(index, Timer { interval, deadline, event, id: timer_id });
     }
 
+    /// Replace a pending event without postponing its deadline, or schedule a new one.
+    pub fn schedule_or_update(
+        &mut self,
+        event: Event,
+        interval: Duration,
+        repeat: bool,
+        timer_id: TimerId,
+    ) {
+        if let Some(timer) = self.timers.iter_mut().find(|timer| timer.id == timer_id) {
+            // Retain the deadline so frequent pointer motion cannot postpone autoscroll forever.
+            timer.event = event;
+            timer.interval = repeat.then_some(interval);
+        } else {
+            self.schedule(event, interval, repeat, timer_id);
+        }
+    }
+
     /// Cancel a scheduled event.
     pub fn unschedule(&mut self, id: TimerId) -> Option<Timer> {
         let index = self.timers.iter().position(|timer| timer.id == id)?;

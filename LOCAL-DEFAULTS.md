@@ -11,7 +11,9 @@ The default Menlo font is supplied by macOS.
 
 ## Included
 
-- Merino Light colors, a blinking block cursor, and 12-point text.
+- Merino Light colors, a block cursor that keeps blinking even when a TUI
+  requests a steady cursor, and 12-point text. Set `cursor.style.blinking` to
+  `"On"` to let applications control blinking, or `"Never"` to disable it.
 - Window padding of 12 × 24, dynamic padding, and maximized startup.
 - On macOS, a transparent title bar and both Option keys acting as Alt.
   Double-clicking its background follows the system title-bar action (Zoom,
@@ -225,6 +227,30 @@ See `extra/performance-results.txt` for measurements and reproducible checks. Th
 CPU benchmarks measure individual operations, not overall application speed.
 
 ## Codex selection and scrollback in tmux
+
+Mouse selection follows Ghostty's cell threshold (60% of the character width).
+Double/triple clicks must stay within one cell width of the first click; on
+macOS they use the system double-click interval. A completed drag starts a fresh
+click sequence. Repeated clicks after a triple-click continue selecting lines.
+
+Ordinary terminal text uses an I-beam pointer. Mouse-aware programs retain an
+arrow pointer for their UI, including tmux's top tab bar; holding a native
+selection modifier switches to the selection pointer.
+Left-button drags use an I-beam even when tmux handles the selection; releasing
+the button restores its arrow. On macOS, Option-drag selects a rectangle with
+a crosshair pointer; Control-drag remains
+available. When tmux or a program captures the mouse, hold Cmd+Option (or
+Shift+Option unless `mouse.shift_passthrough` is enabled) for native rectangular
+selection. Link hover stops showing a hand while text is selected. Dragging to
+the window's top/bottom edge scrolls history; moving within the padding does
+not start scrolling, and continuous pointer motion does not delay scroll ticks.
+Queued scroll ticks recheck gesture ownership, so releasing a button, losing
+focus, or returning mouse control to the application stops native autoscroll.
+
+On macOS, `python3 extra/mouse-selection-acceptance.py APP_BINARY TMUX_BINARY`
+checks native text selection and pointer transitions, including real tmux tab
+clicks and application-owned drags. It uses a private pasteboard and a disposable
+tmux server, leaving existing sessions intact.
 
 Codex's alternate-screen transcript keeps its history inside the application.
 Entering tmux copy mode freezes the visible screen; it cannot scroll that internal
