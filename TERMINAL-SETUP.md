@@ -145,6 +145,28 @@ binary, finish its work and exit its panes, then reopen Alacritty. The installer
 does not terminate sessions. Codex instances started under a dark theme must
 also be restarted/resumed because they cache terminal colors at startup.
 
+For a recoverable server replacement, `extra/tmux-upgrade.py` accepts an explicit
+operator-checked JSON plan containing the old/new sockets, original server PID
+and pane inventory, window layouts, working directories, Codex session IDs, and
+watched rollout paths. Saved terminal text and `start-tmux.zsh` belong beside the
+plan in a private backup directory. The migration fixture in
+`extra/test-tmux-upgrade.py` provides a complete plan example. Keep live plans,
+conversation files, and terminal captures outside version control.
+
+Run `stage PLAN.json` to create gated replacement panes, then `arm PLAN.json` to
+schedule the cutover. The macOS job uses `RunAtLoad=true`, `KeepAlive=false`, and a
+plist in the backup directory, so it runs once without creating a login item.
+The helper waits for the watched turns to finish; skipping a watched conversation
+requires an explicit `wait_for` subset and `interruption_authorized=true`.
+Completed or failed cutovers retain their terminal status when invoked again.
+`verify PLAN.json` checks the restored processes and thread histories across
+shared Codex backends. Codex conversations resume by ID; shells restart in their
+saved directories with captured terminal text available in scrollback.
+
+`TEST_TMUX=/path/to/tmux python3 extra/test-tmux-upgrade.py` exercises client
+handoff, layouts, shared-backend readiness, and repeated invocation using fake
+Codex processes. Add `--launchd` on macOS to test the actual one-shot job as well.
+
 To restore previous settings, quit Alacritty and move the desired backed-up app
 and configuration files back to their original paths. Remove the marked
 Alacritty block from `.zshrc` if there was no previous file. The two app-specific
