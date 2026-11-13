@@ -38,7 +38,9 @@ builds only the terminal emulator.
 - A bundled tmux built from revision
   `b60f804c97adee1aaa7bd9f005af90bdfc0b949d` of
   [shanghaikid/tmux](https://github.com/shanghaikid/tmux). It links this checkout's
-  OSC 7501 status validator. The top tab bar and pane borders use Merino colors.
+  OSC 7501 status validator and applies `extra/tmux-input-cursor.patch` so a
+  single-click selection anchor does not move the input caret. The build manifest
+  records the patch checksum. The top tab bar and pane borders use Merino colors.
 - Cmd+T / Cmd+W tabs, Cmd+D / Cmd+Shift+D splits, Cmd+H/J/K/L pane navigation,
   Cmd+1–9 tab selection, and the existing mouse and Shift-selection behavior.
   Cmd+Shift+N opens a shell window outside tmux; Ctrl+B remains the tmux prefix.

@@ -1,0 +1,2 @@
+# Unified diff context preserves the upstream source's whitespace.
+extra/tmux-input-cursor.patch -whitespace

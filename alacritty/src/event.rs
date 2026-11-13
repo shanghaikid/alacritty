@@ -1812,12 +1812,12 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
         // Check terminal cursor style.
         let terminal_blinking = self.terminal.cursor_style().blinking;
         let mut blinking = cursor_style.blinking_override().unwrap_or(terminal_blinking);
-        blinking &= (vi_mode || self.terminal().mode().contains(TermMode::SHOW_CURSOR))
-            && self.display().ime.preedit().is_none();
+        // TUIs temporarily hide the cursor while drawing. Visibility is handled by the
+        // terminal's cursor shape; keep its blink clock running across hide/show updates.
+        blinking &= self.display().ime.preedit().is_none();
 
         // Update cursor blinking state.
         let window_id = self.display.window.id();
-        self.scheduler.unschedule(TimerId::new(Topic::BlinkCursor, window_id));
         self.scheduler.unschedule(TimerId::new(Topic::BlinkTimeout, window_id));
 
         // Reset blinking timeout.
@@ -1827,6 +1827,7 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
             self.schedule_blinking();
             self.schedule_blinking_timeout();
         } else {
+            self.scheduler.unschedule(TimerId::new(Topic::BlinkCursor, window_id));
             self.display.cursor_hidden = false;
             *self.dirty = true;
         }
@@ -1837,7 +1838,9 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
         let timer_id = TimerId::new(Topic::BlinkCursor, window_id);
         let event = Event::new(EventType::BlinkCursor, window_id);
         let blinking_interval = Duration::from_millis(self.config.cursor.blink_interval());
-        self.scheduler.schedule(event, blinking_interval, true, timer_id);
+        // TUI redraws can repeat cursor-style sequences more often than the blink interval.
+        // Preserve the current phase; typing explicitly cancels the timer before restarting it.
+        self.scheduler.schedule_or_update(event, blinking_interval, true, timer_id);
     }
 
     fn schedule_blinking_timeout(&mut self) {

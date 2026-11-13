@@ -3,6 +3,7 @@
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import platform
 import plistlib
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +52,7 @@ def build(output, test=False):
         revision = subprocess.check_output(['git', '-C', str(tmux), 'rev-parse', 'HEAD'], text=True).strip()
         if revision != TMUX_REV:
             raise RuntimeError('Unexpected tmux revision')
+        run('git', '-C', tmux, 'apply', ROOT / 'extra/tmux-input-cursor.patch')
         run('cargo', 'build', '--locked', '--release', '--target', TARGET,
             '--target-dir', target, '-p', 'alacritty', '-p', 'alacritty_status', env=env)
         release = target / TARGET / 'release'
@@ -66,6 +69,9 @@ def build(output, test=False):
             f'LIBS={release}/libalacritty_status.a -framework Security -framework SystemConfiguration -liconv',
             cwd=tmux, env=tmux_env)
         run('make', '-j', str(os.cpu_count() or 2), cwd=tmux, env=tmux_env)
+        if test:
+            run(sys.executable, ROOT / 'extra/test-tmux-input-cursor.py',
+                env=dict(tmux_env, TEST_TMUX=str(tmux / 'tmux')))
         app = work / 'Alacritty.app'
         run('ditto', ROOT / 'extra/osx/Alacritty.app', app)
         plist = app / 'Contents/Info.plist'
@@ -100,6 +106,8 @@ def build(output, test=False):
             'alacritty_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
             'alacritty_dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT)),
             'tmux_revision': TMUX_REV, 'target': TARGET, 'macos_deployment_target': deployment,
+            'tmux_input_cursor_patch_sha256': hashlib.sha256(
+                (ROOT / 'extra/tmux-input-cursor.patch').read_bytes()).hexdigest(),
         }, indent=2) + '\n')
         run('codesign', '--force', '--deep', '--sign', '-', app)
         run('codesign', '--verify', '--deep', '--strict', app)
@@ -118,6 +126,6 @@ def build(output, test=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist/Alacritty.app')
-    parser.add_argument('--test', action='store_true', help='Run config and IPC regression tests before cleanup')
+    parser.add_argument('--test', action='store_true', help='Run config, IPC, and tmux cursor regression tests before cleanup')
     args = parser.parse_args()
     build(args.output.resolve(), args.test)

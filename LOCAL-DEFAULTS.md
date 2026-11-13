@@ -41,6 +41,13 @@ The default Menlo font is supplied by macOS.
 
 The Baidu Pinyin Shift/Enter fix remains pinned to the same patched winit.
 
+Cursor blinking keeps its phase when a TUI repeats cursor-style requests or
+temporarily hides the cursor while redrawing. Typing restarts the visible phase;
+focus loss and IME preedit retain their normal behavior. On macOS,
+`python3 extra/cursor-blink-acceptance.py APP_BINARY` checks idle blinking and
+continuous TUI redraws in a disposable window through the read-only IPC snapshot.
+The window must stay focused during this check.
+
 ## Pasting images on macOS
 
 Copy a screenshot with Ctrl+Shift+Cmd+4 (or copy an image in Preview), then press
@@ -261,6 +268,25 @@ double/triple clicks, and Shift-clicks directly, so the application can keep its
 selection attached to its own history. Main-screen shell output keeps the tmux
 single-click anchor and Shift-click selection bindings. Option still forwards
 mouse gestures to the application; explicit keyboard tmux copy mode is unchanged.
+
+The bundled tmux keeps an empty mouse-selection anchor separate from the visible
+input cursor. A single click still establishes the anchor for a later Shift-click,
+while the caret stays at the application's input position and respects its cursor
+visibility. Scrolling moves that caret with its text and hides it once the input
+position leaves the viewport.
+Copy-mode line numbers are included in that position; a caret clipped by their
+gutter is hidden. If output arrives while copy mode freezes the text, the caret
+stays at the input position captured with that text until returning to the live
+application. Explicit cursor blinking requests are preserved.
+Keyboard copy mode continues to display its own navigation cursor. This requires
+the bundled tmux cursor patch; an already-running older tmux server must be
+restarted after its sessions have been saved or finished to load the new binary.
+
+`python3 extra/test-tmux-input-cursor.py` checks the actual cursor output using a
+second disposable tmux as a terminal observer. Set `TEST_TMUX` to test a specific
+binary. It covers vi/emacs bindings, a top status bar, line numbers, Shift
+selection, typing, scrollback, frozen output, application-hidden cursors,
+explicit blinking, and keyboard copy-mode navigation.
 
 Do not enable Codex's `tui.raw_output_mode` and `tui.alternate_screen = "never"`
 as a workaround here. The earlier experiment did not establish working resumed

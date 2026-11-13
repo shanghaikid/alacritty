@@ -542,6 +542,8 @@ impl WindowContext {
         serde_json::json!({
             "window_id": u64::from(id),
             "focused": terminal.is_focused,
+            "cursor_hidden": self.display.cursor_hidden,
+            "cursor_visible": terminal.mode().contains(TermMode::SHOW_CURSOR),
             "codex_notifications_enabled": codex_notifications_enabled,
             "shell_pid": self.shell_pid,
             "title": self.display.window.displayed_title(),
